@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GTA Browser - Vice City Stories</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    #game-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    #loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      transition: opacity 0.5s ease;
+    }
+
+    #loading-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loading-title {
+      font-size: 4rem;
+      font-weight: bold;
+      color: #e94560;
+      text-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+      margin-bottom: 2rem;
+      letter-spacing: 0.5rem;
+    }
+
+    .loading-bar-container {
+      width: 400px;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .loading-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #e94560, #ff6b6b);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .loading-text {
+      color: rgba(255, 255, 255, 0.7);
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+
+    #hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .hud-element {
+      pointer-events: auto;
+    }
+
+    #minimap {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 200px;
+      height: 200px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      overflow: hidden;
+    }
+
+    #minimap canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    #stats-panel {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      text-align: right;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .stat-bar {
+      width: 150px;
+      height: 12px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-left: 10px;
+    }
+
+    .stat-fill {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    .health-fill { background: linear-gradient(90deg, #ff4444, #ff6666); }
+    .armor-fill { background: linear-gradient(90deg, #4444ff, #6666ff); }
+
+    .stat-icon {
+      width: 20px;
+      height: 20px;
+      margin-right: 8px;
+    }
+
+    #money-display {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #44ff44;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      margin-top: 10px;
+    }
+
+    #weapon-wheel {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 400px;
+      height: 400px;
+      display: none;
+      pointer-events: auto;
+    }
+
+    #weapon-wheel.active {
+      display: block;
+    }
+
+    #radio-display {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px 20px;
+      border-radius: 8px;
+      color: white;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    #radio-display.visible {
+      opacity: 1;
+    }
+
+    .radio-station {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #e94560;
+    }
+
+    .radio-song {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.7);
+      margin-top: 5px;
+    }
+
+    #mission-display {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      color: white;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    #mission-display.visible {
+      opacity: 1;
+    }
+
+    .mission-title {
+      font-size: 1.5rem;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    }
+
+    .mission-objective {
+      font-size: 1rem;
+      color: rgba(255, 255, 255, 0.8);
+      margin-top: 8px;
+    }
+
+    #wanted-level {
+      position: absolute;
+      top: 20px;
+      right: 200px;
+      display: flex;
+      gap: 5px;
+    }
+
+    .star {
+      width: 24px;
+      height: 24px;
+      opacity: 0.3;
+      transition: opacity 0.3s ease;
+    }
+
+    .star.active {
+      opacity: 1;
+      filter: drop-shadow(0 0 5px gold);
+    }
+
+    #pause-menu {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 500;
+    }
+
+    #pause-menu.active {
+      display: flex;
+    }
+
+    .menu-container {
+      text-align: center;
+    }
+
+    .menu-title {
+      font-size: 3rem;
+      color: #e94560;
+      margin-bottom: 2rem;
+    }
+
+    .menu-option {
+      font-size: 1.5rem;
+      color: white;
+      padding: 15px 40px;
+      margin: 10px 0;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+    }
+
+    .menu-option:hover {
+      color: #e94560;
+      border-color: #e94560;
+      transform: scale(1.05);
+    }
+
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px;
+      height: 20px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    #crosshair.visible {
+      opacity: 1;
+    }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    #crosshair::before {
+      width: 2px;
+      height: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    #crosshair::after {
+      width: 100%;
+      height: 2px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    #notification-container {
+      position: absolute;
+      top: 150px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .notification {
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 4px;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    #controls-help {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    .key {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 8px;
+      border-radius: 3px;
+      margin: 0 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="loading-screen">
+      <div class="loading-title">GTA BROWSER</div>
+      <div class="loading-bar-container">
+        <div class="loading-bar" id="loading-bar"></div>
+      </div>
+      <div class="loading-text" id="loading-text">Initializing engine...</div>
+    </div>
+
+    <div id="hud">
+      <div id="minimap" class="hud-element">
+        <canvas id="minimap-canvas"></canvas>
+      </div>
+
+      <div id="stats-panel">
+        <div class="stat-row">
+          <div class="stat-bar">
+            <div class="stat-fill health-fill" id="health-bar" style="width: 100%"></div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-bar">
+            <div class="stat-fill armor-fill" id="armor-bar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div id="money-display">$0</div>
+      </div>
+
+      <div id="wanted-level">
+        <svg class="star" viewBox="0 0 24 24" fill="gold">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+        <svg class="star" viewBox="0 0 24 24" fill="gold">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+        <svg class="star" viewBox="0 0 24 24" fill="gold">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+        <svg class="star" viewBox="0 0 24 24" fill="gold">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+        <svg class="star" viewBox="0 0 24 24" fill="gold">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+      </div>
+
+      <div id="weapon-wheel"></div>
+
+      <div id="radio-display">
+        <div class="radio-station">Flash FM</div>
+        <div class="radio-song">Loading...</div>
+      </div>
+
+      <div id="mission-display">
+        <div class="mission-title"></div>
+        <div class="mission-objective"></div>
+      </div>
+
+      <div id="crosshair"></div>
+
+      <div id="notification-container"></div>
+
+      <div id="controls-help">
+        <span class="key">WASD</span> Move
+        <span class="key">SHIFT</span> Sprint
+        <span class="key">SPACE</span> Jump
+        <span class="key">E</span> Enter Vehicle
+        <span class="key">F</span> Action
+        <span class="key">TAB</span> Weapons
+        <span class="key">R</span> Radio
+        <span class="key">ESC</span> Pause
+      </div>
+    </div>
+
+    <div id="pause-menu">
+      <div class="menu-container">
+        <div class="menu-title">PAUSED</div>
+        <div class="menu-option" data-action="resume">Resume</div>
+        <div class="menu-option" data-action="save">Save Game</div>
+        <div class="menu-option" data-action="load">Load Game</div>
+        <div class="menu-option" data-action="settings">Settings</div>
+        <div class="menu-option" data-action="quit">Quit</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
