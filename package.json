@@ -19,7 +19,7 @@
     "colyseus.js": "^0.15.25",
     "gsap": "^3.12.4",
     "howler": "^2.2.4",
-    "postprocessing": "^6.34.1",
+    "postprocessing": "^6.38.2",
     "three": "^0.160.0"
   },
   "devDependencies": {

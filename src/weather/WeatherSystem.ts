@@ -3,6 +3,23 @@ import gsap from 'gsap';
 import { WeatherType, WeatherState, WeatherConfig } from '@/types';
 import { Game } from '@/core/Game';
 
+// NYC atmospheric constants
+const NYC_ATMOSPHERIC = {
+  // Typical NYC visibility ranges based on weather
+  visibility: {
+    clear: 30, // km - clearer days
+    hazy: 10,  // km - typical humid day
+    foggy: 2,  // km - fog
+    stormy: 5  // km - rain
+  },
+  // Light scattering colors for NYC atmosphere
+  scattering: {
+    day: new THREE.Color(0.6, 0.75, 0.9),    // Blue-ish haze
+    sunset: new THREE.Color(0.9, 0.6, 0.4),   // Orange-pink
+    night: new THREE.Color(0.15, 0.1, 0.2)    // Purple-ish city glow
+  }
+};
+
 const WEATHER_CONFIGS: Record<WeatherType, WeatherConfig> = {
   clear: {
     type: 'clear',
@@ -68,6 +85,18 @@ export class WeatherSystem {
   private clouds: THREE.Mesh[] = [];
   private skybox: THREE.Mesh | null = null;
 
+  // Environment map for realistic reflections
+  private pmremGenerator: THREE.PMREMGenerator | null = null;
+  private envMapScene: THREE.Scene | null = null;
+  private envMapCamera: THREE.CubeCamera | null = null;
+  private envMapRenderTarget: THREE.WebGLCubeRenderTarget | null = null;
+  private envMapUpdateTimer: number = 0;
+  private envMapUpdateInterval: number = 2; // Update every 2 seconds
+
+  // Enhanced atmospheric fog
+  private atmosphericFog: THREE.FogExp2 | null = null;
+  private distanceFog: THREE.Fog | null = null;
+
   private timeScale: number = 60;
   private weatherChangeTimer: number = 0;
   private nextWeatherChange: number = 120;
@@ -99,33 +128,186 @@ export class WeatherSystem {
     this.createSkybox();
     this.createClouds();
     this.createRainSystem();
+    this.setupEnvironmentMap();
+    this.setupAtmosphericFog();
     this.setWeather('clear');
+  }
+
+  private setupEnvironmentMap(): void {
+    const renderer = this.game.renderer.getRenderer();
+
+    // Create PMREM generator for converting environment maps
+    this.pmremGenerator = new THREE.PMREMGenerator(renderer);
+    this.pmremGenerator.compileEquirectangularShader();
+
+    // Create a render target for dynamic environment map
+    this.envMapRenderTarget = new THREE.WebGLCubeRenderTarget(256, {
+      format: THREE.RGBAFormat,
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter
+    });
+
+    // Create cube camera for capturing environment
+    this.envMapCamera = new THREE.CubeCamera(0.1, 1000, this.envMapRenderTarget);
+    this.envMapCamera.position.set(0, 20, 0); // Above ground level
+
+    // Create a separate scene for environment map (skybox only)
+    this.envMapScene = new THREE.Scene();
+
+    // Clone skybox for env map scene
+    if (this.skybox) {
+      const skyClone = this.skybox.clone();
+      this.envMapScene.add(skyClone);
+    }
+
+    // Initial environment map update
+    this.updateEnvironmentMap();
+  }
+
+  private updateEnvironmentMap(): void {
+    if (!this.envMapCamera || !this.envMapRenderTarget || !this.envMapScene) return;
+
+    const renderer = this.game.renderer.getRenderer();
+
+    // Update the skybox clone in env map scene to match current sky state
+    if (this.envMapScene.children.length > 0 && this.skybox) {
+      const skyClone = this.envMapScene.children[0] as THREE.Mesh;
+      const originalMat = this.skybox.material as THREE.ShaderMaterial;
+      const cloneMat = skyClone.material as THREE.ShaderMaterial;
+
+      // Copy uniform values
+      if (cloneMat.uniforms && originalMat.uniforms) {
+        Object.keys(originalMat.uniforms).forEach(key => {
+          if (cloneMat.uniforms[key]) {
+            cloneMat.uniforms[key].value = originalMat.uniforms[key].value;
+          }
+        });
+      }
+    }
+
+    // Render environment map
+    this.envMapCamera.update(renderer, this.envMapScene);
+
+    // Apply to scene as environment map for reflections
+    this.game.scene.environment = this.envMapRenderTarget.texture;
+  }
+
+  private setupAtmosphericFog(): void {
+    // NYC-style atmospheric haze - layered fog system
+    // Use exponential fog for natural falloff
+    const baseVisibility = NYC_ATMOSPHERIC.visibility.hazy;
+    const fogDensity = 1 / (baseVisibility * 100); // Convert km to fog density
+
+    this.atmosphericFog = new THREE.FogExp2(0x8899aa, fogDensity);
+    this.game.scene.fog = this.atmosphericFog;
+
+    // Also create a linear fog for distant objects
+    this.distanceFog = new THREE.Fog(0x8899aa, 100, 800);
+  }
+
+  private updateAtmosphericFog(): void {
+    if (!this.atmosphericFog) return;
+
+    const time = this.state.timeOfDay;
+    const isDaytime = time > 6 && time < 20;
+    const isSunset = time >= 17 && time < 20;
+    const isSunrise = time >= 5 && time < 7;
+
+    // Determine visibility based on weather and time
+    let visibility: number;
+    switch (this.state.current) {
+      case 'clear':
+        visibility = NYC_ATMOSPHERIC.visibility.clear;
+        break;
+      case 'fog':
+        visibility = NYC_ATMOSPHERIC.visibility.foggy;
+        break;
+      case 'rain':
+      case 'storm':
+        visibility = NYC_ATMOSPHERIC.visibility.stormy;
+        break;
+      default:
+        visibility = NYC_ATMOSPHERIC.visibility.hazy;
+    }
+
+    // Calculate fog density
+    const fogDensity = 1 / (visibility * 80);
+
+    // Smoothly transition fog density
+    this.atmosphericFog.density += (fogDensity - this.atmosphericFog.density) * 0.02;
+
+    // Calculate fog color based on time and weather
+    let fogColor: THREE.Color;
+
+    if (!isDaytime) {
+      // Night - purple-ish city glow from light pollution
+      fogColor = NYC_ATMOSPHERIC.scattering.night.clone();
+      // Add some orange from street lights
+      fogColor.lerp(new THREE.Color(0.2, 0.15, 0.1), 0.3);
+    } else if (isSunset) {
+      // Sunset - warm orange-pink haze
+      const t = (time - 17) / 3;
+      fogColor = NYC_ATMOSPHERIC.scattering.day.clone();
+      fogColor.lerp(NYC_ATMOSPHERIC.scattering.sunset, t);
+    } else if (isSunrise) {
+      // Sunrise - transitioning from night to day
+      const t = (time - 5) / 2;
+      fogColor = NYC_ATMOSPHERIC.scattering.night.clone();
+      fogColor.lerp(NYC_ATMOSPHERIC.scattering.day, t);
+    } else {
+      // Daytime - blue-ish atmospheric haze
+      fogColor = NYC_ATMOSPHERIC.scattering.day.clone();
+    }
+
+    // Weather affects fog color
+    if (this.state.current === 'rain' || this.state.current === 'storm') {
+      fogColor.lerp(new THREE.Color(0.4, 0.45, 0.5), 0.5);
+    } else if (this.state.current === 'fog') {
+      fogColor.lerp(new THREE.Color(0.7, 0.7, 0.7), 0.7);
+    }
+
+    // Apply fog color
+    this.atmosphericFog.color.lerp(fogColor, 0.05);
+
+    // Update distance fog as well
+    if (this.distanceFog) {
+      this.distanceFog.color.copy(this.atmosphericFog.color);
+    }
   }
 
   private setupLighting(): void {
     this.sun.position.set(100, 100, 50);
     this.sun.castShadow = true;
 
-    // Higher quality shadows with larger map
+    // Higher quality shadows with larger map - optimized for NYC cityscape
     this.sun.shadow.mapSize.width = 4096;
     this.sun.shadow.mapSize.height = 4096;
     this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 400;
-    this.sun.shadow.camera.left = -100;
-    this.sun.shadow.camera.right = 100;
-    this.sun.shadow.camera.top = 100;
-    this.sun.shadow.camera.bottom = -100;
-    this.sun.shadow.bias = -0.0003;
+    this.sun.shadow.camera.far = 500;
+    this.sun.shadow.camera.left = -150;
+    this.sun.shadow.camera.right = 150;
+    this.sun.shadow.camera.top = 150;
+    this.sun.shadow.camera.bottom = -150;
+    this.sun.shadow.bias = -0.0002;
     this.sun.shadow.normalBias = 0.02;
-    this.sun.shadow.radius = 2; // Soft shadow edges
+    this.sun.shadow.radius = 3; // Softer shadow edges for realism
+
+    // Add a secondary fill light to simulate sky bounce light
+    const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.3);
+    fillLight.position.set(-50, 30, -50);
+    this.game.scene.add(fillLight);
+
+    // Add rim light for dramatic NYC silhouettes
+    const rimLight = new THREE.DirectionalLight(0xffeedd, 0.2);
+    rimLight.position.set(0, 10, -100);
+    this.game.scene.add(rimLight);
 
     this.game.scene.add(this.sun);
     this.game.scene.add(this.sun.target);
     this.game.scene.add(this.ambient);
     this.game.scene.add(this.hemisphere);
 
-    // Improved fog with better distance
-    this.game.scene.fog = new THREE.FogExp2(0x87ceeb, 0.0003);
+    // Note: Fog is now set up in setupAtmosphericFog()
   }
 
   private createSkybox(): void {
@@ -312,6 +494,14 @@ export class WeatherSystem {
     this.updateClouds(deltaTime);
     this.updateRain(deltaTime);
     this.updateLightning(deltaTime);
+    this.updateAtmosphericFog();
+
+    // Update environment map periodically (not every frame for performance)
+    this.envMapUpdateTimer += deltaTime;
+    if (this.envMapUpdateTimer >= this.envMapUpdateInterval) {
+      this.envMapUpdateTimer = 0;
+      this.updateEnvironmentMap();
+    }
   }
 
   private updateTimeOfDay(deltaTime: number): void {
@@ -423,33 +613,43 @@ export class WeatherSystem {
         material.uniforms.horizonColor.value.setHex(0xff6644);
         material.uniforms.sunColor.value.setHex(0xff4422);
       } else {
-        // Night
-        material.uniforms.topColor.value.setHex(0x000011);
-        material.uniforms.bottomColor.value.setHex(0x111122);
-        material.uniforms.horizonColor.value.setHex(0x1a1a2e);
+        // Night - NYC light pollution creates orange-purple horizon glow
+        material.uniforms.topColor.value.setHex(0x0a0a1a); // Deep blue-black sky
+        material.uniforms.bottomColor.value.setHex(0x1a1520); // Purple-tinted from city lights
+        // NYC iconic orange-ish horizon glow from millions of lights
+        material.uniforms.horizonColor.value.setHex(0x2a2035);
         material.uniforms.sunColor.value.setHex(0x444466);
       }
     }
 
-    const ambientIntensity = isDaytime
-      ? this.config.ambientLight
-      : this.config.ambientLight * 0.3;
+    // Ambient intensity with NYC light pollution boost at night
+    let ambientIntensity: number;
+    if (isDaytime) {
+      ambientIntensity = this.config.ambientLight;
+    } else {
+      // NYC never gets truly dark - light pollution provides ambient illumination
+      ambientIntensity = this.config.ambientLight * 0.4;
+    }
     this.ambient.intensity = ambientIntensity;
 
-    // Update hemisphere light colors
+    // Update hemisphere light colors with NYC characteristics
     if (isDaytime) {
-      this.hemisphere.color.setHex(0x87ceeb);
-      this.hemisphere.groundColor.setHex(0x556655);
+      this.hemisphere.color.setHex(0x87ceeb); // Sky blue
+      this.hemisphere.groundColor.setHex(0x556655); // Green-ish ground bounce
+      this.hemisphere.intensity = 0.5;
+    } else if (isSunset) {
+      // Golden hour hemisphere lighting
+      this.hemisphere.color.setHex(0xff9966);
+      this.hemisphere.groundColor.setHex(0x443322);
+      this.hemisphere.intensity = 0.6;
     } else {
-      this.hemisphere.color.setHex(0x111133);
-      this.hemisphere.groundColor.setHex(0x222222);
+      // Night - orange tint from street lights, purple from sky
+      this.hemisphere.color.setHex(0x1a1a33); // Dark purple sky
+      this.hemisphere.groundColor.setHex(0x332211); // Warm street light bounce
+      this.hemisphere.intensity = 0.35;
     }
 
-    if (this.game.scene.fog) {
-      const fog = this.game.scene.fog as THREE.FogExp2;
-      const fogColor = isDaytime ? this.config.fogColor : 0x111122;
-      fog.color.setHex(fogColor);
-    }
+    // Note: Fog is now handled by updateAtmosphericFog()
   }
 
   private updateWeather(deltaTime: number): void {
@@ -625,6 +825,14 @@ export class WeatherSystem {
 
     if (this.skybox) {
       this.game.scene.remove(this.skybox);
+    }
+
+    // Dispose environment map resources
+    if (this.pmremGenerator) {
+      this.pmremGenerator.dispose();
+    }
+    if (this.envMapRenderTarget) {
+      this.envMapRenderTarget.dispose();
     }
 
     this.game.scene.remove(this.sun);
