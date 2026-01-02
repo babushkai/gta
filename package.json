@@ -16,11 +16,13 @@
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",
     "cannon-es": "^0.20.0",
+    "cesium": "^1.136.0",
     "colyseus.js": "^0.15.25",
     "gsap": "^3.12.4",
     "howler": "^2.2.4",
     "postprocessing": "^6.38.2",
-    "three": "^0.160.0"
+    "three": "^0.160.0",
+    "vite-plugin-cesium": "^1.2.23"
   },
   "devDependencies": {
     "@types/howler": "^2.2.12",

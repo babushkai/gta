@@ -4,6 +4,7 @@ import { WorldObject, Pickup, PickupType } from '@/types';
 import { Game } from '@/core/Game';
 import { COLLISION_GROUPS } from '@/physics/PhysicsWorld';
 import { globalEvents } from '@/core/EventEmitter';
+import { CesiumManager } from './CesiumManager';
 
 // NYC Building styles
 type NYCBuildingStyle = 'brownstone' | 'artdeco' | 'prewar' | 'modern' | 'glass_tower' | 'warehouse';
@@ -41,6 +42,9 @@ export class World {
   private ground: THREE.Mesh | null = null;
   private roads: THREE.Mesh[] = [];
 
+  // Google 3D Tiles integration
+  public cesium: CesiumManager;
+
   // InstancedMesh for performance optimization
   private hydrantInstances: THREE.InstancedMesh | null = null;
   private trafficLightInstances: THREE.InstancedMesh | null = null;
@@ -63,9 +67,13 @@ export class World {
 
   constructor(game: Game) {
     this.game = game;
+    this.cesium = new CesiumManager(game);
   }
 
   async initialize(): Promise<void> {
+    // Initialize Google 3D Tiles (optional - requires API key)
+    await this.cesium.initialize();
+
     this.createGround();
     this.initializeInstancedMeshes();
     this.createRoads();
@@ -1616,6 +1624,9 @@ export class World {
   }
 
   update(deltaTime: number): void {
+    // Update Google 3D Tiles camera sync
+    this.cesium.update(deltaTime);
+
     this.updatePickups(deltaTime);
     this.updateStreetLights();
     this.syncPhysicsObjects();
@@ -1810,6 +1821,9 @@ export class World {
   }
 
   dispose(): void {
+    // Dispose Cesium/Google 3D Tiles
+    this.cesium.dispose();
+
     this.objects.forEach((_, id) => {
       const obj = this.objects.get(id);
       if (obj) {

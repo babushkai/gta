@@ -14,6 +14,21 @@ import {
 } from 'postprocessing';
 import { GraphicsConfig } from '@/types';
 
+// WebGPU availability check
+async function isWebGPUAvailable(): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nav = navigator as any;
+  if (!nav.gpu) {
+    return false;
+  }
+  try {
+    const adapter = await nav.gpu.requestAdapter();
+    return adapter !== null;
+  } catch {
+    return false;
+  }
+}
+
 export class Renderer {
   private renderer: THREE.WebGLRenderer;
   private composer: EffectComposer | null = null;
@@ -30,6 +45,9 @@ export class Renderer {
   // Exposure control for day/night
   private targetExposure: number = 1.0;
   private currentExposure: number = 1.0;
+
+  // WebGPU support tracking
+  private isWebGPU: boolean = false;
 
   constructor(config: GraphicsConfig) {
     this.config = config;
@@ -59,7 +77,26 @@ export class Renderer {
     }
   }
 
+  // Check WebGPU availability - can be called before game starts
+  static async checkWebGPUSupport(): Promise<boolean> {
+    return isWebGPUAvailable();
+  }
+
+  isUsingWebGPU(): boolean {
+    return this.isWebGPU;
+  }
+
   async initialize(scene: THREE.Scene, camera: THREE.PerspectiveCamera): Promise<void> {
+    // Check WebGPU availability
+    const webgpuAvailable = await isWebGPUAvailable();
+    if (webgpuAvailable) {
+      console.log('WebGPU is available! Future versions may use WebGPU for enhanced performance.');
+      // Note: Three.js WebGPU renderer is still experimental
+      // When stable, we can switch: import { WebGPURenderer } from 'three/webgpu';
+    } else {
+      console.log('WebGPU not available, using WebGL renderer.');
+    }
+
     const container = document.getElementById('game-container');
     if (container) {
       container.insertBefore(this.canvas, container.firstChild);

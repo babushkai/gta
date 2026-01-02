@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import cesium from 'vite-plugin-cesium';
 
 export default defineConfig({
+  plugins: [cesium()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src')
@@ -13,6 +15,10 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    sourcemap: true
+    sourcemap: true,
+    chunkSizeWarningLimit: 5000 // Cesium is large
+  },
+  define: {
+    CESIUM_BASE_URL: JSON.stringify('/cesium/')
   }
 });
