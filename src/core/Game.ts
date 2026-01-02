@@ -4,6 +4,7 @@ import { EventEmitter, globalEvents } from './EventEmitter';
 import { InputManager } from './InputManager';
 import { Renderer } from './Renderer';
 import { PhysicsWorld } from '@/physics/PhysicsWorld';
+import { RapierVehiclePhysics } from '@/physics/RapierVehiclePhysics';
 import { Player } from '@/player/Player';
 import { VehicleManager } from '@/vehicles/VehicleManager';
 import { AIManager } from '@/ai/AIManager';
@@ -15,6 +16,8 @@ import { AudioManager } from '@/audio/AudioManager';
 import { UIManager } from '@/ui/UIManager';
 import { World } from '@/world/World';
 import { SaveManager } from './SaveManager';
+import { WeaponSystem } from '@/weapons/WeaponSystem';
+import { NetworkManager } from '@/network/NetworkManager';
 
 export class Game extends EventEmitter {
   private static instance: Game;
@@ -22,6 +25,7 @@ export class Game extends EventEmitter {
   public config: GameConfig;
   public renderer: Renderer;
   public physics: PhysicsWorld;
+  public vehiclePhysics: RapierVehiclePhysics;
   public input: InputManager;
   public player: Player;
   public vehicles: VehicleManager;
@@ -34,6 +38,8 @@ export class Game extends EventEmitter {
   public ui: UIManager;
   public world: World;
   public save: SaveManager;
+  public weapons: WeaponSystem;
+  public network: NetworkManager;
 
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
@@ -59,6 +65,7 @@ export class Game extends EventEmitter {
     this.renderer = new Renderer(this.config.graphics);
     this.input = new InputManager();
     this.physics = new PhysicsWorld(this.config.physics);
+    this.vehiclePhysics = new RapierVehiclePhysics(this.config.physics);
     this.player = new Player(this);
     this.vehicles = new VehicleManager(this);
     this.ai = new AIManager(this);
@@ -70,6 +77,8 @@ export class Game extends EventEmitter {
     this.ui = new UIManager(this);
     this.world = new World(this);
     this.save = new SaveManager();
+    this.weapons = new WeaponSystem(this);
+    this.network = new NetworkManager(this);
   }
 
   static getInstance(): Game {
@@ -123,6 +132,8 @@ export class Game extends EventEmitter {
 
       this.updateLoadingProgress(15, 'Setting up physics...');
       await this.physics.initialize();
+      await this.vehiclePhysics.initialize();
+      this.vehiclePhysics.createGroundPlane();
 
       this.updateLoadingProgress(25, 'Loading world...');
       await this.world.initialize();
@@ -144,6 +155,9 @@ export class Game extends EventEmitter {
 
       this.updateLoadingProgress(80, 'Setting up inventory...');
       await this.inventory.initialize();
+
+      this.updateLoadingProgress(82, 'Loading weapons...');
+      await this.weapons.initialize();
 
       this.updateLoadingProgress(85, 'Initializing weather...');
       await this.weather.initialize();
@@ -232,24 +246,32 @@ export class Game extends EventEmitter {
   }
 
   private update(deltaTime: number): void {
-    // 1. Process input and set velocities/forces BEFORE physics step
-    this.player.update(deltaTime);
+    // 1. Process vehicle input (sets forces for physics)
     this.vehicles.update(deltaTime);
-    this.ai.update(deltaTime);
-    this.traffic.update(deltaTime);
 
     // 2. Step physics simulation (applies velocities/forces, detects collisions)
     this.physics.update(deltaTime);
+    this.vehiclePhysics.update(deltaTime);
 
-    // 3. Sync mesh positions from physics bodies
-    this.player.syncWithPhysics();
+    // 3. Sync mesh positions from physics bodies BEFORE player update
+    //    This ensures player camera sees the correct vehicle position
     this.vehicles.syncWithPhysics();
+    this.player.syncWithPhysics();
 
-    // 4. Update non-physics systems
+    // 4. Update player (uses synced vehicle position for camera)
+    this.player.update(deltaTime);
+
+    // 5. Update AI and traffic
+    this.ai.update(deltaTime);
+    this.traffic.update(deltaTime);
+
+    // 6. Update non-physics systems
     this.missions.update(deltaTime);
     this.weather.update(deltaTime);
     this.world.update(deltaTime);
+    this.weapons.update(deltaTime);
     this.ui.update(deltaTime);
+    this.network.update(deltaTime);
   }
 
   private render(): void {
@@ -369,8 +391,10 @@ export class Game extends EventEmitter {
     this.stop();
     this.renderer.dispose();
     this.physics.dispose();
+    this.vehiclePhysics.dispose();
     this.input.dispose();
     this.audio.dispose();
     this.world.dispose();
+    this.network.dispose();
   }
 }

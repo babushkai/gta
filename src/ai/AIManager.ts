@@ -83,7 +83,8 @@ export class AIManager {
   }
 
   private spawnInitialNPCs(): void {
-    for (let i = 0; i < 20; i++) {
+    // Spawn civilians
+    for (let i = 0; i < 15; i++) {
       const position = this.pathfinding.getRandomWalkablePoint(
         this.game.player.position,
         80
@@ -92,6 +93,17 @@ export class AIManager {
 
       const config = CHARACTER_CONFIGS[Math.floor(Math.random() * 2)];
       this.spawnNPC(config, position);
+    }
+
+    // Spawn some gang members for combat
+    const gangConfig = CHARACTER_CONFIGS.find(c => c.type === 'gang')!;
+    for (let i = 0; i < 5; i++) {
+      const position = this.pathfinding.getRandomWalkablePoint(
+        this.game.player.position,
+        60
+      );
+      position.y = 1;
+      this.spawnNPC(gangConfig, position);
     }
   }
 
@@ -110,6 +122,18 @@ export class AIManager {
       position
     );
 
+    // Assign weapons to hostile NPCs and police
+    let weapon = null;
+    if (config.hostile) {
+      // Gang members get random weapons
+      const gangWeapons = ['pistol', 'uzi', 'shotgun'];
+      const randomWeapon = gangWeapons[Math.floor(Math.random() * gangWeapons.length)];
+      weapon = this.game.weapons.createNPCWeapon(randomWeapon);
+    } else if (config.type === 'police') {
+      // Police get pistols
+      weapon = this.game.weapons.createNPCWeapon('pistol');
+    }
+
     const npc: NPC = {
       id,
       config,
@@ -117,7 +141,7 @@ export class AIManager {
       body,
       health: config.health,
       state: 'idle',
-      currentWeapon: null,
+      currentWeapon: weapon,
       target: null,
       path: [],
       isDead: false,
@@ -136,40 +160,306 @@ export class AIManager {
     this.game.scene.add(mesh);
     this.npcs.set(id, npc);
 
+    // Attach weapon mesh if NPC has a weapon
+    if (npc.currentWeapon) {
+      this.attachWeaponToNPC(npc);
+    }
+
     return npc;
   }
 
   private createNPCMesh(config: CharacterConfig): THREE.Group {
     const group = new THREE.Group();
 
-    const colors: Record<string, number> = {
-      civilian: 0x44aa44,
-      gang: 0xaa4444,
-      police: 0x4444aa,
-      military: 0x444444
+    // Different skin tones for variety
+    const skinTones = [0xe0b090, 0xd4a574, 0xc68642, 0x8d5524, 0xffdbac];
+    const skinColor = skinTones[Math.floor(Math.random() * skinTones.length)];
+
+    // Clothing colors based on type
+    const clothingColors: Record<string, { shirt: number; pants: number }> = {
+      civilian: {
+        shirt: [0x2244aa, 0x44aa44, 0xaa4444, 0x888888, 0x224422, 0xaaaa44][Math.floor(Math.random() * 6)],
+        pants: [0x222222, 0x333355, 0x443322, 0x555555][Math.floor(Math.random() * 4)]
+      },
+      gang: { shirt: 0xaa2222, pants: 0x222222 },
+      police: { shirt: 0x2233aa, pants: 0x222244 },
+      military: { shirt: 0x4a5c3a, pants: 0x3a4a2a }
     };
 
-    const bodyGeometry = new THREE.CapsuleGeometry(0.25, 1.0, 8, 16);
-    const bodyMaterial = new THREE.MeshStandardMaterial({
-      color: colors[config.type] || 0x888888,
-      roughness: 0.7
-    });
-    const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    bodyMesh.position.y = 0.75;
-    bodyMesh.castShadow = true;
-    group.add(bodyMesh);
+    const colors = clothingColors[config.type] || clothingColors.civilian;
 
-    const headGeometry = new THREE.SphereGeometry(0.18, 16, 16);
-    const headMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffcc99,
-      roughness: 0.8
+    const skinMaterial = new THREE.MeshStandardMaterial({
+      color: skinColor,
+      roughness: 0.7,
+      metalness: 0.0
     });
-    const headMesh = new THREE.Mesh(headGeometry, headMaterial);
-    headMesh.position.y = 1.55;
-    headMesh.castShadow = true;
-    group.add(headMesh);
+
+    const shirtMaterial = new THREE.MeshStandardMaterial({
+      color: colors.shirt,
+      roughness: 0.8,
+      metalness: 0.0
+    });
+
+    const pantsMaterial = new THREE.MeshStandardMaterial({
+      color: colors.pants,
+      roughness: 0.9,
+      metalness: 0.0
+    });
+
+    const shoeMaterial = new THREE.MeshStandardMaterial({
+      color: 0x111111,
+      roughness: 0.6,
+      metalness: 0.1
+    });
+
+    // Head - slightly oval
+    const headGeometry = new THREE.SphereGeometry(0.14, 16, 16);
+    headGeometry.scale(1, 1.1, 0.95);
+    const head = new THREE.Mesh(headGeometry, skinMaterial);
+    head.position.y = 1.65;
+    head.castShadow = true;
+    group.add(head);
+
+    // Hair - random styles
+    const hairColors = [0x1a1a1a, 0x3a2a1a, 0x5a4a3a, 0x8a6a4a, 0xaa8866];
+    const hairColor = hairColors[Math.floor(Math.random() * hairColors.length)];
+    const hairMaterial = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.9 });
+
+    if (Math.random() > 0.3) { // 70% have visible hair
+      const hairGeometry = new THREE.SphereGeometry(0.145, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+      const hair = new THREE.Mesh(hairGeometry, hairMaterial);
+      hair.position.y = 1.68;
+      hair.scale.set(1, 0.7 + Math.random() * 0.3, 1);
+      group.add(hair);
+    }
+
+    // Neck
+    const neckGeometry = new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8);
+    const neck = new THREE.Mesh(neckGeometry, skinMaterial);
+    neck.position.y = 1.48;
+    group.add(neck);
+
+    // Torso - upper (chest)
+    const chestGeometry = new THREE.BoxGeometry(0.36, 0.26, 0.18);
+    const chest = new THREE.Mesh(chestGeometry, shirtMaterial);
+    chest.position.y = 1.28;
+    chest.castShadow = true;
+    group.add(chest);
+
+    // Torso - lower (abdomen)
+    const abdomenGeometry = new THREE.BoxGeometry(0.32, 0.18, 0.16);
+    const abdomen = new THREE.Mesh(abdomenGeometry, shirtMaterial);
+    abdomen.position.y = 1.04;
+    abdomen.castShadow = true;
+    group.add(abdomen);
+
+    // Belt
+    const beltGeometry = new THREE.BoxGeometry(0.34, 0.08, 0.17);
+    const beltMaterial = new THREE.MeshStandardMaterial({ color: 0x4a3528, roughness: 0.5 });
+    const belt = new THREE.Mesh(beltGeometry, beltMaterial);
+    belt.position.y = 0.9;
+    group.add(belt);
+
+    // Upper arms
+    const upperArmGeometry = new THREE.CapsuleGeometry(0.05, 0.18, 4, 8);
+
+    const leftUpperArm = new THREE.Mesh(upperArmGeometry, shirtMaterial);
+    leftUpperArm.position.set(-0.23, 1.28, 0);
+    leftUpperArm.rotation.z = 0.15;
+    leftUpperArm.castShadow = true;
+    group.add(leftUpperArm);
+
+    const rightUpperArm = new THREE.Mesh(upperArmGeometry, shirtMaterial);
+    rightUpperArm.position.set(0.23, 1.28, 0);
+    rightUpperArm.rotation.z = -0.15;
+    rightUpperArm.castShadow = true;
+    group.add(rightUpperArm);
+
+    // Forearms (skin)
+    const forearmGeometry = new THREE.CapsuleGeometry(0.04, 0.18, 4, 8);
+
+    const leftForearm = new THREE.Mesh(forearmGeometry, skinMaterial);
+    leftForearm.position.set(-0.27, 1.0, 0);
+    leftForearm.rotation.z = 0.1;
+    leftForearm.castShadow = true;
+    group.add(leftForearm);
+
+    const rightForearm = new THREE.Mesh(forearmGeometry, skinMaterial);
+    rightForearm.position.set(0.27, 1.0, 0);
+    rightForearm.rotation.z = -0.1;
+    rightForearm.name = 'rightArm';
+    rightForearm.castShadow = true;
+    group.add(rightForearm);
+
+    // Hands
+    const handGeometry = new THREE.SphereGeometry(0.04, 8, 8);
+
+    const leftHand = new THREE.Mesh(handGeometry, skinMaterial);
+    leftHand.position.set(-0.29, 0.82, 0);
+    leftHand.scale.set(1, 1.2, 0.6);
+    group.add(leftHand);
+
+    const rightHand = new THREE.Mesh(handGeometry, skinMaterial);
+    rightHand.position.set(0.29, 0.82, 0);
+    rightHand.scale.set(1, 1.2, 0.6);
+    group.add(rightHand);
+
+    // Upper legs (thighs)
+    const thighGeometry = new THREE.CapsuleGeometry(0.065, 0.26, 4, 8);
+
+    const leftThigh = new THREE.Mesh(thighGeometry, pantsMaterial);
+    leftThigh.position.set(-0.1, 0.66, 0);
+    leftThigh.castShadow = true;
+    group.add(leftThigh);
+
+    const rightThigh = new THREE.Mesh(thighGeometry, pantsMaterial);
+    rightThigh.position.set(0.1, 0.66, 0);
+    rightThigh.castShadow = true;
+    group.add(rightThigh);
+
+    // Lower legs (calves)
+    const calfGeometry = new THREE.CapsuleGeometry(0.05, 0.26, 4, 8);
+
+    const leftCalf = new THREE.Mesh(calfGeometry, pantsMaterial);
+    leftCalf.position.set(-0.1, 0.32, 0);
+    leftCalf.castShadow = true;
+    group.add(leftCalf);
+
+    const rightCalf = new THREE.Mesh(calfGeometry, pantsMaterial);
+    rightCalf.position.set(0.1, 0.32, 0);
+    rightCalf.castShadow = true;
+    group.add(rightCalf);
+
+    // Shoes
+    const shoeGeometry = new THREE.BoxGeometry(0.08, 0.05, 0.14);
+
+    const leftShoe = new THREE.Mesh(shoeGeometry, shoeMaterial);
+    leftShoe.position.set(-0.1, 0.025, 0.02);
+    leftShoe.castShadow = true;
+    group.add(leftShoe);
+
+    const rightShoe = new THREE.Mesh(shoeGeometry, shoeMaterial);
+    rightShoe.position.set(0.1, 0.025, 0.02);
+    rightShoe.castShadow = true;
+    group.add(rightShoe);
+
+    // Police hat for police
+    if (config.type === 'police') {
+      const hatGeometry = new THREE.CylinderGeometry(0.12, 0.14, 0.08, 8);
+      const hatMaterial = new THREE.MeshStandardMaterial({ color: 0x222244, roughness: 0.6 });
+      const hat = new THREE.Mesh(hatGeometry, hatMaterial);
+      hat.position.y = 1.78;
+      group.add(hat);
+
+      const hatBrim = new THREE.CylinderGeometry(0.16, 0.16, 0.02, 8);
+      const brim = new THREE.Mesh(hatBrim, hatMaterial);
+      brim.position.y = 1.73;
+      group.add(brim);
+    }
+
+    // Gang bandana
+    if (config.type === 'gang') {
+      const bandanaGeometry = new THREE.BoxGeometry(0.3, 0.04, 0.15);
+      const bandanaMaterial = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.8 });
+      const bandana = new THREE.Mesh(bandanaGeometry, bandanaMaterial);
+      bandana.position.y = 1.72;
+      group.add(bandana);
+    }
 
     return group;
+  }
+
+  private createNPCWeaponMesh(weaponType: string): THREE.Group {
+    const group = new THREE.Group();
+    const gunMetal = new THREE.MeshStandardMaterial({
+      color: 0x2a2a2a,
+      roughness: 0.4,
+      metalness: 0.9
+    });
+
+    switch (weaponType) {
+      case 'pistol':
+        const pistolBody = new THREE.Mesh(
+          new THREE.BoxGeometry(0.03, 0.08, 0.12),
+          gunMetal
+        );
+        group.add(pistolBody);
+        const pistolBarrel = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.01, 0.01, 0.06, 6),
+          gunMetal
+        );
+        pistolBarrel.rotation.x = Math.PI / 2;
+        pistolBarrel.position.z = 0.09;
+        group.add(pistolBarrel);
+        break;
+
+      case 'uzi':
+        const uziBody = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.08, 0.18),
+          gunMetal
+        );
+        group.add(uziBody);
+        const uziMag = new THREE.Mesh(
+          new THREE.BoxGeometry(0.02, 0.1, 0.03),
+          gunMetal
+        );
+        uziMag.position.set(0, -0.08, 0);
+        group.add(uziMag);
+        break;
+
+      case 'shotgun':
+        const shotgunBody = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.05, 0.4),
+          gunMetal
+        );
+        group.add(shotgunBody);
+        const shotgunStock = new THREE.Mesh(
+          new THREE.BoxGeometry(0.035, 0.08, 0.15),
+          new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.8 })
+        );
+        shotgunStock.position.z = -0.25;
+        group.add(shotgunStock);
+        break;
+
+      case 'ak47':
+        const rifleBody = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.06, 0.35),
+          gunMetal
+        );
+        group.add(rifleBody);
+        const rifleMag = new THREE.Mesh(
+          new THREE.BoxGeometry(0.025, 0.1, 0.04),
+          gunMetal
+        );
+        rifleMag.position.set(0, -0.07, 0.05);
+        rifleMag.rotation.x = 0.15;
+        group.add(rifleMag);
+        break;
+
+      default:
+        // Generic gun shape
+        const defaultBody = new THREE.Mesh(
+          new THREE.BoxGeometry(0.03, 0.06, 0.15),
+          gunMetal
+        );
+        group.add(defaultBody);
+    }
+
+    group.scale.setScalar(0.8);
+    return group;
+  }
+
+  private attachWeaponToNPC(npc: NPC): void {
+    if (!npc.currentWeapon) return;
+
+    const weaponMesh = this.createNPCWeaponMesh(npc.currentWeapon.config.id);
+    weaponMesh.name = 'npcWeapon';
+
+    // Position weapon in right hand
+    weaponMesh.position.set(0.4, 0.7, 0.15);
+    weaponMesh.rotation.set(0, 0, -0.3);
+
+    npc.mesh.add(weaponMesh);
   }
 
   private generatePatrolPoints(origin: THREE.Vector3): THREE.Vector3[] {
@@ -286,19 +576,107 @@ export class AIManager {
 
     this.lookAt(npc, playerPos);
 
-    if (distance > 30) {
+    // Lost sight of player
+    if (distance > 40) {
       npc.behavior.state = 'seeking';
       npc.behavior.lastKnownPlayerPosition = playerPos.clone();
-    } else if (distance > 10) {
-      if (npc.path.length === 0) {
-        npc.path = this.pathfinding.findPath(npc.mesh.position, playerPos);
+      return;
+    }
+
+    // Check weapon and ammo
+    if (npc.currentWeapon) {
+      // Reload if out of ammo
+      if (npc.currentWeapon.currentAmmo <= 0 && npc.currentWeapon.reserveAmmo > 0) {
+        const neededAmmo = npc.currentWeapon.config.magazineSize;
+        const ammoToLoad = Math.min(neededAmmo, npc.currentWeapon.reserveAmmo);
+        npc.currentWeapon.currentAmmo = ammoToLoad;
+        npc.currentWeapon.reserveAmmo -= ammoToLoad;
+        return; // Skip turn while reloading
       }
-      this.moveAlongPath(npc, deltaTime, npc.config.speed * 1.2);
+
+      // Determine optimal combat range based on weapon
+      const weapon = npc.currentWeapon;
+      let optimalRange = 15;
+      if (weapon.config.type === 'shotgun') optimalRange = 8;
+      else if (weapon.config.type === 'rifle') optimalRange = 25;
+      else if (weapon.config.type === 'smg') optimalRange = 12;
+
+      // Too far - advance toward player
+      if (distance > optimalRange + 5) {
+        if (npc.path.length === 0) {
+          npc.path = this.pathfinding.findPath(npc.mesh.position, playerPos);
+        }
+        this.moveAlongPath(npc, deltaTime, npc.config.speed * 1.2);
+      }
+      // Too close - back away while shooting
+      else if (distance < optimalRange - 3) {
+        const retreatDir = npc.mesh.position.clone().sub(playerPos).normalize();
+        const retreatTarget = npc.mesh.position.clone().add(retreatDir.multiplyScalar(5));
+        npc.path = [retreatTarget];
+        this.moveAlongPath(npc, deltaTime, npc.config.speed * 0.8);
+
+        // Shoot while retreating
+        if (Math.random() < 0.08) {
+          this.shootAtPlayer(npc);
+        }
+      }
+      // In optimal range - strafe and shoot
+      else {
+        // Strafe movement
+        const strafeDir = new THREE.Vector3(
+          -(playerPos.z - npc.mesh.position.z),
+          0,
+          playerPos.x - npc.mesh.position.x
+        ).normalize();
+
+        // Change strafe direction periodically
+        if (Math.random() < 0.02) {
+          strafeDir.multiplyScalar(-1);
+        }
+
+        npc.body.velocity.x = strafeDir.x * npc.config.speed * 0.5;
+        npc.body.velocity.z = strafeDir.z * npc.config.speed * 0.5;
+
+        // Shoot based on weapon fire rate
+        const fireChance = (weapon.config.fireRate / 60) * deltaTime;
+        if (Math.random() < fireChance && npc.currentWeapon.currentAmmo > 0) {
+          this.shootAtPlayer(npc);
+        }
+      }
+
+      // Alert nearby hostiles
+      if (Math.random() < 0.01) {
+        this.alertNearbyNPCs(npc.mesh.position, 30, playerPos);
+      }
     } else {
-      if (npc.currentWeapon && Math.random() < 0.1) {
-        this.shootAtPlayer(npc);
+      // No weapon - charge at player for melee
+      if (distance > 2) {
+        if (npc.path.length === 0) {
+          npc.path = this.pathfinding.findPath(npc.mesh.position, playerPos);
+        }
+        this.moveAlongPath(npc, deltaTime, npc.config.speed * 1.5);
+      } else {
+        // Melee attack
+        if (Math.random() < 0.15) {
+          this.game.player.takeDamage(10, npc.mesh.position.clone().sub(playerPos).normalize());
+          this.game.audio.playSound('punch');
+        }
       }
     }
+  }
+
+  private alertNearbyNPCs(position: THREE.Vector3, radius: number, playerPos: THREE.Vector3): void {
+    this.npcs.forEach(npc => {
+      if (npc.isDead || !npc.config.hostile) return;
+      if (npc.behavior.state === 'attacking') return;
+
+      const distance = npc.mesh.position.distanceTo(position);
+      if (distance < radius) {
+        npc.behavior.state = 'attacking';
+        npc.behavior.lastKnownPlayerPosition = playerPos.clone();
+        npc.behavior.alertLevel = 100;
+      }
+    });
   }
 
   private handleSeekingState(npc: NPC, deltaTime: number): void {
@@ -364,16 +742,45 @@ export class AIManager {
   private shootAtPlayer(npc: NPC): void {
     if (!npc.currentWeapon) return;
 
-    const direction = this.game.player.position.clone().sub(npc.mesh.position);
+    const npcHeadPos = npc.mesh.position.clone();
+    npcHeadPos.y += 1.5; // Shoot from head height
+
+    const playerPos = this.game.player.position.clone();
+    playerPos.y += 1; // Target player center mass
+
+    // Line-of-sight check - raycast to see if there's anything between NPC and player
+    const result = this.game.physics.raycast(npcHeadPos, playerPos, {
+      collisionFilterMask: COLLISION_GROUPS.STATIC | COLLISION_GROUPS.VEHICLE | COLLISION_GROUPS.DYNAMIC
+    });
+
+    // If we hit something closer than the player, can't shoot
+    if (result.hit && result.point) {
+      const distanceToHit = npcHeadPos.distanceTo(result.point);
+      const distanceToPlayer = npcHeadPos.distanceTo(playerPos);
+      if (distanceToHit < distanceToPlayer - 0.5) {
+        // Something is blocking the shot
+        return;
+      }
+    }
+
+    const direction = playerPos.clone().sub(npcHeadPos);
     direction.normalize();
 
-    const accuracy = 0.8;
-    direction.x += (Math.random() - 0.5) * (1 - accuracy);
-    direction.z += (Math.random() - 0.5) * (1 - accuracy);
+    // Accuracy based on weapon config
+    const accuracy = npc.currentWeapon.config.accuracy * 0.8; // NPCs are slightly less accurate
+    direction.x += (Math.random() - 0.5) * (1 - accuracy) * 0.5;
+    direction.y += (Math.random() - 0.5) * (1 - accuracy) * 0.3;
+    direction.z += (Math.random() - 0.5) * (1 - accuracy) * 0.5;
 
+    // Check if shot hits
     const hit = Math.random() < accuracy;
     if (hit) {
       this.game.player.takeDamage(npc.currentWeapon.config.damage, direction);
+    }
+
+    // Consume ammo
+    if (npc.currentWeapon.currentAmmo > 0) {
+      npc.currentWeapon.currentAmmo--;
     }
 
     this.game.audio.playSound('gunshot');
@@ -453,8 +860,11 @@ export class AIManager {
 
     npc.health -= damage;
 
+    // Visual hit feedback - flash red
+    this.flashNPCRed(npc);
+
     if (npc.health <= 0) {
-      this.killNPC(npc);
+      this.killNPC(npc, fromDirection);
     } else {
       if (npc.config.hostile) {
         npc.behavior.state = 'attacking';
@@ -463,26 +873,92 @@ export class AIManager {
         npc.behavior.state = 'fleeing';
       }
 
+      // Stagger effect - push back and stumble
       if (fromDirection) {
-        const pushForce = fromDirection.normalize().multiplyScalar(-100);
+        const pushForce = fromDirection.normalize().multiplyScalar(-150);
         npc.body.applyImpulse(
-          new CANNON.Vec3(pushForce.x, 50, pushForce.z),
+          new CANNON.Vec3(pushForce.x, 30, pushForce.z),
           npc.body.position
         );
       }
+
+      // Play hit sound
+      this.game.audio.playSound('hit');
     }
   }
 
-  private killNPC(npc: NPC): void {
+  private flashNPCRed(npc: NPC): void {
+    // Store original materials and flash red
+    const originalColors: Map<THREE.Mesh, number> = new Map();
+
+    npc.mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+        originalColors.set(child, child.material.color.getHex());
+        child.material.color.setHex(0xff0000);
+        child.material.emissive.setHex(0x440000);
+      }
+    });
+
+    // Restore original colors after flash
+    setTimeout(() => {
+      npc.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+          const originalColor = originalColors.get(child);
+          if (originalColor !== undefined) {
+            child.material.color.setHex(originalColor);
+            child.material.emissive.setHex(0x000000);
+          }
+        }
+      });
+    }, 100);
+  }
+
+  private killNPC(npc: NPC, fromDirection?: THREE.Vector3): void {
     npc.isDead = true;
     npc.state = 'dead';
     npc.behavior.state = 'dead';
 
+    // Play death sound
+    this.game.audio.playSound('death');
+
+    // Animated death - fall in direction of impact
+    const fallDirection = fromDirection ? fromDirection.clone().normalize() : new THREE.Vector3(0, 0, 1);
+
+    // Calculate fall rotation based on impact direction
+    const fallAngle = Math.atan2(fallDirection.x, fallDirection.z);
+
+    // Animate the death fall
+    const startY = npc.mesh.position.y;
+    const startRotX = npc.mesh.rotation.x;
+    const startRotY = npc.mesh.rotation.y;
+    let frame = 0;
+    const totalFrames = 20;
+
+    const animateDeath = () => {
+      frame++;
+      const progress = frame / totalFrames;
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+
+      // Fall backwards
+      npc.mesh.rotation.x = startRotX + (Math.PI / 2) * easeOut;
+      // Rotate to face impact direction
+      npc.mesh.rotation.y = startRotY + (fallAngle - startRotY) * easeOut * 0.3;
+      // Drop to ground
+      npc.mesh.position.y = startY - (startY - 0.25) * easeOut;
+
+      if (frame < totalFrames) {
+        requestAnimationFrame(animateDeath);
+      } else {
+        // Final position
+        npc.mesh.rotation.x = Math.PI / 2;
+        npc.mesh.position.y = 0.25;
+      }
+    };
+    animateDeath();
+
+    // Stop physics movement
     npc.body.mass = 0;
     npc.body.velocity.setZero();
-
-    npc.mesh.rotation.x = Math.PI / 2;
-    npc.mesh.position.y = 0.3;
 
     globalEvents.emit('npc_killed', {
       id: npc.id,
@@ -493,9 +969,28 @@ export class AIManager {
       this.game.player.setWantedLevel(this.game.player.stats.wantedLevel + 1);
     }
 
+    // Fade out and remove after delay
     setTimeout(() => {
-      this.removeNPC(npc.id);
-    }, 10000);
+      // Fade out effect
+      let fadeFrame = 0;
+      const fadeFrames = 30;
+      const fadeOut = () => {
+        fadeFrame++;
+        const opacity = 1 - (fadeFrame / fadeFrames);
+        npc.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+            child.material.transparent = true;
+            child.material.opacity = opacity;
+          }
+        });
+        if (fadeFrame < fadeFrames) {
+          requestAnimationFrame(fadeOut);
+        } else {
+          this.removeNPC(npc.id);
+        }
+      };
+      fadeOut();
+    }, 8000);
   }
 
   removeNPC(id: string): void {
@@ -521,8 +1016,173 @@ export class AIManager {
     return result;
   }
 
+  findNPCNearPoint(position: THREE.Vector3, radius: number): string | null {
+    let closestId: string | null = null;
+    let closestDistance = radius;
+
+    this.npcs.forEach(npc => {
+      if (npc.isDead) return;
+      const distance = npc.mesh.position.distanceTo(position);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestId = npc.id;
+      }
+    });
+
+    return closestId;
+  }
+
   getPathfinding(): Pathfinding {
     return this.pathfinding;
+  }
+
+  /**
+   * Called when a gunshot is fired - triggers NPC reactions (GTA5-style panic)
+   */
+  onGunshotFired(position: THREE.Vector3, hearingRadius: number): void {
+    const panicRadius = hearingRadius * 1.5; // NPCs can hear gunshots from further away
+
+    this.npcs.forEach(npc => {
+      if (npc.isDead) return;
+
+      const distance = npc.mesh.position.distanceTo(position);
+      if (distance > panicRadius) return;
+
+      // Calculate panic intensity based on distance (closer = more panic)
+      const panicIntensity = 1 - (distance / panicRadius);
+
+      if (npc.config.type === 'civilian') {
+        // Civilians panic and flee
+        this.triggerCivilianPanic(npc, position, panicIntensity);
+      } else if (npc.config.type === 'police') {
+        // Police respond to gunfire
+        this.triggerPoliceResponse(npc, position);
+      } else if (npc.config.hostile) {
+        // Hostile NPCs become alert and may engage
+        if (npc.behavior.state !== 'attacking') {
+          npc.behavior.state = 'seeking';
+          npc.behavior.lastKnownPlayerPosition = position.clone();
+          npc.behavior.alertLevel = 100;
+        }
+      }
+    });
+
+    // Increase wanted level if shooting near civilians
+    const nearbyCivilians = this.getNPCsInRadius(position, hearingRadius * 0.5)
+      .filter(npc => npc.config.type === 'civilian' && !npc.isDead);
+
+    if (nearbyCivilians.length > 0) {
+      const currentWanted = this.game.player.stats.wantedLevel;
+      if (currentWanted < 1) {
+        this.game.player.setWantedLevel(1);
+      }
+    }
+  }
+
+  private triggerCivilianPanic(npc: NPC, gunshotPosition: THREE.Vector3, intensity: number): void {
+    // Don't panic if already fleeing
+    if (npc.behavior.state === 'fleeing') return;
+
+    npc.behavior.state = 'fleeing';
+    npc.behavior.alertLevel = 100;
+
+    // Calculate flee direction (away from gunshot)
+    const fleeDirection = npc.mesh.position.clone().sub(gunshotPosition).normalize();
+    const fleeDistance = 30 + Math.random() * 20;
+    const fleeTarget = npc.mesh.position.clone().add(fleeDirection.multiplyScalar(fleeDistance));
+    npc.path = this.pathfinding.findPath(npc.mesh.position, fleeTarget);
+
+    // Play scream sound with probability based on panic intensity
+    if (Math.random() < intensity * 0.7) {
+      this.playNPCScream(npc);
+    }
+
+    // Animate panic reaction - throw hands up
+    this.animatePanicReaction(npc);
+  }
+
+  private triggerPoliceResponse(npc: NPC, crimePosition: THREE.Vector3): void {
+    // Police respond to gunfire location
+    if (npc.behavior.state !== 'attacking') {
+      npc.behavior.state = 'seeking';
+      npc.behavior.lastKnownPlayerPosition = crimePosition.clone();
+      npc.behavior.alertLevel = 100;
+
+      // Play police radio chatter
+      this.playPoliceRadio();
+    }
+  }
+
+  private playNPCScream(npc: NPC): void {
+    // Play scream sound - different for male/female
+    const isFemale = npc.config.id.includes('female') || Math.random() > 0.5;
+    this.game.audio.playSound(isFemale ? 'scream_female' : 'scream_male', { volume: 0.6 });
+  }
+
+  private playPoliceRadio(): void {
+    // Play police radio dispatch sound
+    this.game.audio.playSound('police_radio', { volume: 0.5 });
+  }
+
+  private animatePanicReaction(npc: NPC): void {
+    // Quick panic animation - raise arms and duck slightly
+    const startY = npc.mesh.position.y;
+    let frame = 0;
+    const panicFrames = 15;
+
+    const animatePanic = () => {
+      frame++;
+      const progress = frame / panicFrames;
+      const bounce = Math.sin(progress * Math.PI) * 0.1;
+
+      // Duck down and back up
+      npc.mesh.position.y = startY - bounce;
+
+      // Add a slight random rotation for frantic look
+      if (frame < panicFrames / 2) {
+        npc.mesh.rotation.y += (Math.random() - 0.5) * 0.3;
+      }
+
+      if (frame < panicFrames) {
+        requestAnimationFrame(animatePanic);
+      }
+    };
+    animatePanic();
+  }
+
+  /**
+   * Spawn police reinforcements (called when wanted level increases)
+   */
+  spawnPoliceReinforcements(playerPosition: THREE.Vector3, count: number): void {
+    const policeConfig = CHARACTER_CONFIGS.find(c => c.type === 'police')!;
+
+    for (let i = 0; i < count; i++) {
+      // Spawn police at edges of player visibility
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 50 + Math.random() * 20;
+      const spawnPos = new THREE.Vector3(
+        playerPosition.x + Math.cos(angle) * distance,
+        1,
+        playerPosition.z + Math.sin(angle) * distance
+      );
+
+      const npc = this.spawnNPC(policeConfig, spawnPos);
+      if (npc) {
+        npc.behavior.state = 'seeking';
+        npc.behavior.lastKnownPlayerPosition = playerPosition.clone();
+        npc.behavior.alertLevel = 100;
+
+        // Play siren sound occasionally
+        if (Math.random() < 0.3) {
+          setTimeout(() => {
+            this.game.audio.playSound('police_siren', { volume: 0.4 });
+          }, Math.random() * 2000);
+        }
+      }
+    }
+
+    // Play radio dispatch for reinforcements
+    this.playPoliceRadio();
   }
 
   dispose(): void {

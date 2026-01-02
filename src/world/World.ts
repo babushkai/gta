@@ -55,12 +55,32 @@ export class World {
   private createGround(): void {
     const groundSize = 1000;
 
-    const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 100, 100);
+    const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 200, 200);
+
+    // Create procedural grass texture
+    const grassTexture = this.createGrassTexture();
+    grassTexture.wrapS = THREE.RepeatWrapping;
+    grassTexture.wrapT = THREE.RepeatWrapping;
+    grassTexture.repeat.set(100, 100);
+
     const groundMaterial = new THREE.MeshStandardMaterial({
-      color: 0x3d5c3d,
-      roughness: 0.9,
-      metalness: 0.1
+      color: 0x4a6b4a,
+      map: grassTexture,
+      roughness: 0.95,
+      metalness: 0.0,
+      envMapIntensity: 0.2
     });
+
+    // Add slight height variation for realism
+    const positions = groundGeometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const y = positions.getY(i);
+      // Gentle rolling hills
+      const noise = Math.sin(x * 0.01) * Math.cos(y * 0.01) * 0.3;
+      positions.setZ(i, noise);
+    }
+    groundGeometry.computeVertexNormals();
 
     this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
     this.ground.rotation.x = -Math.PI / 2;
@@ -69,14 +89,110 @@ export class World {
     this.game.scene.add(this.ground);
   }
 
+  private createGrassTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    // Base green
+    ctx.fillStyle = '#3a5a3a';
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Add grass blade variations
+    for (let i = 0; i < 5000; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const shade = Math.floor(Math.random() * 40) + 40;
+      ctx.fillStyle = `rgb(${shade}, ${shade + 30}, ${shade})`;
+      ctx.fillRect(x, y, 1, 2);
+    }
+
+    // Add some darker patches
+    for (let i = 0; i < 20; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const radius = Math.random() * 20 + 10;
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      gradient.addColorStop(0, 'rgba(30, 50, 30, 0.3)');
+      gradient.addColorStop(1, 'rgba(30, 50, 30, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }
+
+  private createAsphaltTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    // Base dark gray
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Add asphalt grain
+    for (let i = 0; i < 8000; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const shade = Math.floor(Math.random() * 30) + 25;
+      ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade})`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+
+    // Add occasional lighter spots (gravel)
+    for (let i = 0; i < 500; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const shade = Math.floor(Math.random() * 20) + 50;
+      ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade})`;
+      ctx.fillRect(x, y, 2, 2);
+    }
+
+    // Add subtle cracks
+    ctx.strokeStyle = 'rgba(20, 20, 20, 0.5)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.moveTo(Math.random() * 256, Math.random() * 256);
+      for (let j = 0; j < 3; j++) {
+        ctx.lineTo(
+          ctx.canvas.width * Math.random(),
+          ctx.canvas.height * Math.random()
+        );
+      }
+      ctx.stroke();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }
+
   private createRoads(): void {
+    // Create asphalt texture
+    const asphaltTexture = this.createAsphaltTexture();
+    asphaltTexture.wrapS = THREE.RepeatWrapping;
+    asphaltTexture.wrapT = THREE.RepeatWrapping;
+
     const roadMaterial = new THREE.MeshStandardMaterial({
-      color: 0x333333,
-      roughness: 0.9
+      color: 0x2a2a2a,
+      map: asphaltTexture,
+      roughness: 0.85,
+      metalness: 0.05,
+      envMapIntensity: 0.3
     });
 
-    const laneMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff
+    const laneMaterial = new THREE.MeshStandardMaterial({
+      color: 0xeeeeee,
+      roughness: 0.7,
+      metalness: 0.0,
+      emissive: 0x222222,
+      emissiveIntensity: 0.1
     });
 
     const gridSize = 50;
@@ -175,10 +291,20 @@ export class World {
     color: number
   ): Building {
     const geometry = new THREE.BoxGeometry(width, height, depth);
+
+    // Create building facade texture
+    const facadeTexture = this.createBuildingTexture(width, height);
+
+    // Determine building style based on height
+    const isSkyscraper = height > 30;
+    const isModern = Math.random() > 0.5;
+
     const material = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.8,
-      metalness: 0.2
+      map: facadeTexture,
+      roughness: isModern ? 0.3 : 0.7,
+      metalness: isModern ? 0.4 : 0.1,
+      envMapIntensity: isSkyscraper ? 0.8 : 0.3
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -186,7 +312,12 @@ export class World {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
-    this.addWindows(mesh, width, height, depth);
+    this.addWindows(mesh, width, height, depth, isModern);
+
+    // Add rooftop details
+    if (Math.random() > 0.5) {
+      this.addRooftopDetails(mesh, width, height, depth);
+    }
 
     const body = this.game.physics.createBoxBody(
       `building_${this.objectIdCounter++}`,
@@ -210,17 +341,110 @@ export class World {
     return building;
   }
 
+  private createBuildingTexture(width: number, height: number): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    // Base color
+    const baseShade = Math.floor(Math.random() * 40) + 100;
+    ctx.fillStyle = `rgb(${baseShade}, ${baseShade - 10}, ${baseShade - 20})`;
+    ctx.fillRect(0, 0, 128, 256);
+
+    // Add brick/panel pattern
+    const panelHeight = 16;
+    const panelWidth = 32;
+    for (let y = 0; y < 256; y += panelHeight) {
+      for (let x = 0; x < 128; x += panelWidth) {
+        const shade = baseShade + Math.floor(Math.random() * 20) - 10;
+        ctx.fillStyle = `rgb(${shade}, ${shade - 10}, ${shade - 20})`;
+        ctx.fillRect(x + 1, y + 1, panelWidth - 2, panelHeight - 2);
+      }
+    }
+
+    // Add subtle vertical lines
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < 128; x += panelWidth) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 256);
+      ctx.stroke();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(width / 8, height / 16);
+    return texture;
+  }
+
+  private addRooftopDetails(building: THREE.Mesh, width: number, height: number, depth: number): void {
+    // AC units
+    const acMaterial = new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      roughness: 0.6,
+      metalness: 0.4
+    });
+
+    for (let i = 0; i < Math.floor(Math.random() * 3) + 1; i++) {
+      const acUnit = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 1, 1.5),
+        acMaterial
+      );
+      acUnit.position.set(
+        (Math.random() - 0.5) * (width - 3),
+        height / 2 + 0.5,
+        (Math.random() - 0.5) * (depth - 3)
+      );
+      acUnit.castShadow = true;
+      building.add(acUnit);
+    }
+
+    // Water tank on some buildings
+    if (Math.random() > 0.7) {
+      const tankMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.5,
+        metalness: 0.3
+      });
+      const tank = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.5, 1.5, 3, 8),
+        tankMaterial
+      );
+      tank.position.set(0, height / 2 + 1.5, 0);
+      tank.castShadow = true;
+      building.add(tank);
+    }
+  }
+
   private addWindows(
     building: THREE.Mesh,
     width: number,
     height: number,
-    depth: number
+    depth: number,
+    isModern: boolean = false
   ): void {
-    const windowMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffcc,
-      transparent: true,
-      opacity: 0.5
-    });
+    // Modern buildings have reflective glass windows
+    const windowMaterial = isModern
+      ? new THREE.MeshStandardMaterial({
+          color: 0x88aacc,
+          roughness: 0.1,
+          metalness: 0.9,
+          envMapIntensity: 1.0,
+          transparent: true,
+          opacity: 0.8
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0xffffcc,
+          emissive: 0xffffaa,
+          emissiveIntensity: 0.1,
+          roughness: 0.3,
+          metalness: 0.1,
+          transparent: true,
+          opacity: 0.6
+        });
 
     const windowSize = 1.5;
     const windowSpacing = 3;
@@ -255,9 +479,13 @@ export class World {
 
           window.rotation.copy(side.rotation);
 
+          // Some windows are dark (unlit)
           if (Math.random() > 0.5) {
-            (window.material as THREE.MeshBasicMaterial).color.setHex(0x333333);
-            (window.material as THREE.MeshBasicMaterial).opacity = 0.8;
+            const mat = window.material as THREE.MeshStandardMaterial;
+            mat.color.setHex(0x223344);
+            mat.emissive.setHex(0x000000);
+            mat.emissiveIntensity = 0;
+            mat.opacity = 0.9;
           }
 
           building.add(window);
@@ -327,22 +555,107 @@ export class World {
   }
 
   private createPickups(): void {
-    const pickupLocations: Array<{ type: PickupType; position: THREE.Vector3; value: number }> = [
-      { type: 'health', position: new THREE.Vector3(20, 1, 20), value: 25 },
-      { type: 'health', position: new THREE.Vector3(-30, 1, 40), value: 25 },
-      { type: 'armor', position: new THREE.Vector3(50, 1, -30), value: 50 },
-      { type: 'money', position: new THREE.Vector3(-20, 1, -40), value: 100 },
-      { type: 'money', position: new THREE.Vector3(80, 1, 60), value: 250 },
-      { type: 'weapon', position: new THREE.Vector3(40, 1, 50), value: 0 },
-      { type: 'ammo', position: new THREE.Vector3(-60, 1, 30), value: 50 }
-    ];
+    const pickupLocations: Array<{ type: PickupType; position: THREE.Vector3; value: number; weaponId?: string }> = [];
+
+    // === GANG TERRITORY (Southeast) - Street weapons ===
+    // Gang hideout weapon stash
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(75, 1, 75), value: 0, weaponId: 'pistol' },
+      { type: 'weapon', position: new THREE.Vector3(78, 1, 73), value: 0, weaponId: 'uzi' },
+      { type: 'ammo', position: new THREE.Vector3(76, 1, 77), value: 60 },
+      { type: 'health', position: new THREE.Vector3(80, 1, 75), value: 25 }
+    );
+    // Alley behind buildings
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(55, 1, 85), value: 0, weaponId: 'knife' },
+      { type: 'weapon', position: new THREE.Vector3(65, 1, 95), value: 0, weaponId: 'bat' }
+    );
+
+    // === INDUSTRIAL ZONE (Northwest) - Heavy weapons ===
+    // Warehouse weapon cache
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(-100, 1, -100), value: 0, weaponId: 'shotgun' },
+      { type: 'weapon', position: new THREE.Vector3(-105, 1, -98), value: 0, weaponId: 'ak47' },
+      { type: 'weapon', position: new THREE.Vector3(-102, 1, -103), value: 0, weaponId: 'm4' },
+      { type: 'ammo', position: new THREE.Vector3(-100, 1, -105), value: 100 },
+      { type: 'armor', position: new THREE.Vector3(-108, 1, -100), value: 100 }
+    );
+    // Loading dock
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(-130, 1, -80), value: 0, weaponId: 'rpg' },
+      { type: 'ammo', position: new THREE.Vector3(-128, 1, -82), value: 50 }
+    );
+
+    // === DOWNTOWN (Center) - Mixed pickups ===
+    // Behind police station
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(15, 1, 45), value: 0, weaponId: 'pistol' },
+      { type: 'armor', position: new THREE.Vector3(18, 1, 48), value: 50 }
+    );
+    // Rooftop access (ground level for now)
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(-25, 1, 25), value: 0, weaponId: 'sniper' },
+      { type: 'ammo', position: new THREE.Vector3(-23, 1, 27), value: 30 }
+    );
+    // Park area
+    pickupLocations.push(
+      { type: 'health', position: new THREE.Vector3(0, 1, 30), value: 50 },
+      { type: 'money', position: new THREE.Vector3(5, 1, 35), value: 100 }
+    );
+
+    // === RESIDENTIAL AREA (Southwest) - Light weapons ===
+    // Backyard stash
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(-80, 1, 60), value: 0, weaponId: 'deagle' },
+      { type: 'ammo', position: new THREE.Vector3(-78, 1, 62), value: 40 }
+    );
+    // Garage
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(-60, 1, 40), value: 0, weaponId: 'shotgun' },
+      { type: 'health', position: new THREE.Vector3(-58, 1, 42), value: 25 }
+    );
+
+    // === CONSTRUCTION SITE (Northeast) - Random weapons ===
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(120, 1, -60), value: 0, weaponId: 'ak47' },
+      { type: 'weapon', position: new THREE.Vector3(125, 1, -55), value: 0, weaponId: 'grenade' },
+      { type: 'weapon', position: new THREE.Vector3(130, 1, -65), value: 0, weaponId: 'uzi' },
+      { type: 'ammo', position: new THREE.Vector3(127, 1, -60), value: 80 },
+      { type: 'armor', position: new THREE.Vector3(122, 1, -58), value: 50 }
+    );
+
+    // === DOCKS AREA (Far East) - Military grade ===
+    pickupLocations.push(
+      { type: 'weapon', position: new THREE.Vector3(180, 1, 20), value: 0, weaponId: 'm4' },
+      { type: 'weapon', position: new THREE.Vector3(185, 1, 25), value: 0, weaponId: 'sniper' },
+      { type: 'weapon', position: new THREE.Vector3(175, 1, 15), value: 0, weaponId: 'rpg' },
+      { type: 'ammo', position: new THREE.Vector3(180, 1, 25), value: 100 },
+      { type: 'armor', position: new THREE.Vector3(178, 1, 18), value: 100 },
+      { type: 'health', position: new THREE.Vector3(182, 1, 22), value: 50 }
+    );
+
+    // === SCATTERED MONEY around the map ===
+    pickupLocations.push(
+      { type: 'money', position: new THREE.Vector3(-40, 1, -60), value: 150 },
+      { type: 'money', position: new THREE.Vector3(60, 1, -40), value: 200 },
+      { type: 'money', position: new THREE.Vector3(-100, 1, 50), value: 300 },
+      { type: 'money', position: new THREE.Vector3(140, 1, 80), value: 500 },
+      { type: 'money', position: new THREE.Vector3(-150, 1, -120), value: 1000 }
+    );
+
+    // === HEALTH around the map ===
+    pickupLocations.push(
+      { type: 'health', position: new THREE.Vector3(40, 1, -80), value: 25 },
+      { type: 'health', position: new THREE.Vector3(-70, 1, -30), value: 25 },
+      { type: 'health', position: new THREE.Vector3(100, 1, 50), value: 50 }
+    );
 
     pickupLocations.forEach(pickup => {
-      this.createPickup(pickup.type, pickup.position, pickup.value);
+      this.createPickup(pickup.type, pickup.position, pickup.value, pickup.weaponId);
     });
   }
 
-  private createPickup(type: PickupType, position: THREE.Vector3, value: number): Pickup {
+  private createPickup(type: PickupType, position: THREE.Vector3, value: number, weaponId?: string): Pickup {
     const colors: Record<PickupType, number> = {
       health: 0xff0000,
       armor: 0x0000ff,
@@ -352,6 +665,10 @@ export class World {
       special: 0xff00ff
     };
 
+    const group = new THREE.Group();
+    group.position.copy(position);
+
+    // Base pickup shape
     const geometry = new THREE.OctahedronGeometry(0.5);
     const material = new THREE.MeshStandardMaterial({
       color: colors[type],
@@ -361,25 +678,126 @@ export class World {
       metalness: 0.8
     });
 
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.copy(position);
-    mesh.castShadow = true;
+    const baseMesh = new THREE.Mesh(geometry, material);
+    baseMesh.castShadow = true;
+    group.add(baseMesh);
 
-    this.game.scene.add(mesh);
+    // Add weapon-specific visual for weapon pickups
+    if (type === 'weapon' && weaponId) {
+      const weaponMesh = this.createWeaponPickupMesh(weaponId);
+      if (weaponMesh) {
+        weaponMesh.position.y = 0.8;
+        weaponMesh.scale.setScalar(1.5);
+        group.add(weaponMesh);
+      }
+    }
+
+    this.game.scene.add(group);
 
     const id = `pickup_${this.pickupIdCounter++}`;
     const pickup: Pickup = {
       id,
       type,
       value,
-      mesh,
+      mesh: group as unknown as THREE.Mesh,
       position,
       respawnTime: 60,
-      collected: false
+      collected: false,
+      weaponId
     };
 
     this.pickups.set(id, pickup);
     return pickup;
+  }
+
+  private createWeaponPickupMesh(weaponId: string): THREE.Group | null {
+    const group = new THREE.Group();
+    const gunMetal = new THREE.MeshStandardMaterial({
+      color: 0x2a2a2a,
+      roughness: 0.4,
+      metalness: 0.9
+    });
+    const woodMaterial = new THREE.MeshStandardMaterial({
+      color: 0x5c3a21,
+      roughness: 0.8,
+      metalness: 0.1
+    });
+
+    switch (weaponId) {
+      case 'pistol':
+      case 'deagle':
+        const pistolBody = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.15), gunMetal);
+        group.add(pistolBody);
+        break;
+      case 'uzi':
+        const uziBody = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.2), gunMetal);
+        const uziMag = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.12, 0.03), gunMetal);
+        uziMag.position.set(0, -0.08, 0);
+        group.add(uziBody);
+        group.add(uziMag);
+        break;
+      case 'shotgun':
+        const shotgunBody = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.4), gunMetal);
+        const shotgunStock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.15), woodMaterial);
+        shotgunStock.position.z = -0.25;
+        group.add(shotgunBody);
+        group.add(shotgunStock);
+        break;
+      case 'ak47':
+      case 'm4':
+        const rifleBody = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.35), gunMetal);
+        const rifleMag = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.1, 0.04), gunMetal);
+        rifleMag.position.set(0, -0.08, 0.05);
+        const rifleStock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.15), woodMaterial);
+        rifleStock.position.z = -0.22;
+        group.add(rifleBody);
+        group.add(rifleMag);
+        group.add(rifleStock);
+        break;
+      case 'sniper':
+        const sniperBody = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.5), gunMetal);
+        const sniperScope = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 8), gunMetal);
+        sniperScope.rotation.x = Math.PI / 2;
+        sniperScope.position.set(0, 0.06, 0.1);
+        group.add(sniperBody);
+        group.add(sniperScope);
+        break;
+      case 'knife':
+        const blade = new THREE.Mesh(
+          new THREE.BoxGeometry(0.01, 0.02, 0.15),
+          new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 })
+        );
+        blade.position.z = 0.08;
+        const knifeHandle = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.08), woodMaterial);
+        group.add(blade);
+        group.add(knifeHandle);
+        break;
+      case 'bat':
+        const batBody = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.5, 8), woodMaterial);
+        batBody.rotation.x = Math.PI / 2;
+        group.add(batBody);
+        break;
+      case 'rpg':
+        const rpgTube = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.04, 0.04, 0.6, 12),
+          new THREE.MeshStandardMaterial({ color: 0x4a5c3a, roughness: 0.7 })
+        );
+        rpgTube.rotation.x = Math.PI / 2;
+        group.add(rpgTube);
+        break;
+      case 'grenade':
+        const grenadeBody = new THREE.Mesh(
+          new THREE.SphereGeometry(0.04, 8, 8),
+          new THREE.MeshStandardMaterial({ color: 0x3a4a2a, roughness: 0.7 })
+        );
+        grenadeBody.scale.y = 1.3;
+        group.add(grenadeBody);
+        break;
+      default:
+        return null;
+    }
+
+    return group;
   }
 
   private createDestructibles(): void {
@@ -476,10 +894,15 @@ export class World {
         this.game.player.addMoney(pickup.value);
         break;
       case 'weapon':
-        this.game.inventory.addWeapon('smg');
+        // Add the specific weapon from the pickup
+        const weaponId = pickup.weaponId || 'pistol';
+        this.game.weapons.addWeapon(weaponId, 50);
         break;
       case 'ammo':
+        // Add ammo to all weapons the player has
         this.game.inventory.addAmmoByType('pistol', pickup.value);
+        this.game.inventory.addAmmoByType('smg', pickup.value);
+        this.game.inventory.addAmmoByType('rifle', pickup.value);
         break;
     }
 

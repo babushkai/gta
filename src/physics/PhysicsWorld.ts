@@ -1,6 +1,6 @@
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
-import { PhysicsConfig, CollisionResult } from '@/types';
+import { PhysicsConfig, CollisionResult, VehicleType } from '@/types';
 
 export const COLLISION_GROUPS = {
   GROUND: 1,
@@ -73,16 +73,29 @@ export class PhysicsWorld {
     );
     this.world.addContactMaterial(playerDefaultContact);
 
-    // Vehicle-Ground contact: No bounce, some friction for traction
+    // Vehicle-Ground contact: No bounce, moderate friction for traction
     const vehicleGroundContact = new CANNON.ContactMaterial(
       this.vehicleMaterial,
       this.groundMaterial,
       {
-        friction: 0.1,
-        restitution: 0
+        friction: 0.3, // Some friction for realistic traction
+        restitution: 0, // No bounce
+        contactEquationStiffness: 1e8, // Stiff contact to prevent sinking
+        contactEquationRelaxation: 3
       }
     );
     this.world.addContactMaterial(vehicleGroundContact);
+
+    // Vehicle-Vehicle contact: Prevent vehicles bouncing off each other
+    const vehicleVehicleContact = new CANNON.ContactMaterial(
+      this.vehicleMaterial,
+      this.vehicleMaterial,
+      {
+        friction: 0.5,
+        restitution: 0.1
+      }
+    );
+    this.world.addContactMaterial(vehicleVehicleContact);
   }
 
   async initialize(): Promise<void> {
@@ -212,26 +225,112 @@ export class PhysicsWorld {
     mass: number,
     position: THREE.Vector3
   ): CANNON.Body {
+    // Create chassis shape - thin box above wheel line
+    // Based on cannon-es example: chassis should be above where wheels connect
     const chassisShape = new CANNON.Box(
-      new CANNON.Vec3(dimensions.width / 2, dimensions.height / 2, dimensions.length / 2)
+      new CANNON.Vec3(dimensions.width / 2, 0.25, dimensions.length / 2)
     );
 
-    const body = new CANNON.Body({
+    const chassisBody = new CANNON.Body({
       mass,
       position: new CANNON.Vec3(position.x, position.y, position.z),
       material: this.vehicleMaterial,
-      linearDamping: 0.01,
-      angularDamping: 0.3,
       allowSleep: false,
       collisionFilterGroup: COLLISION_GROUPS.VEHICLE,
       collisionFilterMask: COLLISION_GROUPS.GROUND | COLLISION_GROUPS.STATIC | COLLISION_GROUPS.VEHICLE | COLLISION_GROUPS.NPC | COLLISION_GROUPS.PLAYER
     });
 
-    body.addShape(chassisShape);
+    // Position chassis shape above wheel connection points
+    // Wheels connect at y=0, chassis should be above that
+    chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.5, 0));
 
-    this.world.addBody(body);
-    this.bodies.set(id, body);
-    return body;
+    this.world.addBody(chassisBody);
+    this.bodies.set(id, chassisBody);
+    return chassisBody;
+  }
+
+  createRaycastVehicle(
+    chassisBody: CANNON.Body,
+    vehicleType: VehicleType
+  ): CANNON.RaycastVehicle {
+    const vehicle = new CANNON.RaycastVehicle({
+      chassisBody,
+      indexRightAxis: 0,    // x
+      indexUpAxis: 1,       // y
+      indexForwardAxis: 2,  // z
+    });
+
+    // Wheel options based on vehicle type
+    const wheelRadius = vehicleType === 'truck' ? 0.45 : vehicleType === 'motorcycle' ? 0.35 : 0.35;
+    const suspensionRestLength = vehicleType === 'truck' ? 0.4 : 0.3;
+
+    const wheelOptions = {
+      radius: wheelRadius,
+      directionLocal: new CANNON.Vec3(0, -1, 0),
+      suspensionStiffness: 30,
+      suspensionRestLength: suspensionRestLength,
+      frictionSlip: 1.5,
+      dampingRelaxation: 2.3,
+      dampingCompression: 4.4,
+      maxSuspensionForce: 100000,
+      rollInfluence: 0.01,
+      axleLocal: new CANNON.Vec3(-1, 0, 0),
+      maxSuspensionTravel: 0.5, // Increased for more suspension travel
+      customSlidingRotationalSpeed: -30,
+      useCustomSlidingRotationalSpeed: true,
+      chassisConnectionPointLocal: new CANNON.Vec3(0, 0, 0),
+    };
+
+    // Get wheel positions based on vehicle type
+    const wheelPositions = this.getWheelPositions(vehicleType);
+
+    // Add wheels
+    wheelPositions.forEach((pos, index) => {
+      wheelOptions.chassisConnectionPointLocal = new CANNON.Vec3(pos.x, pos.y, pos.z);
+      vehicle.addWheel(wheelOptions);
+    });
+
+    vehicle.addToWorld(this.world);
+
+    return vehicle;
+  }
+
+  private getWheelPositions(vehicleType: VehicleType): CANNON.Vec3[] {
+    // Wheel connection points relative to chassis body center
+    // Y should be at or slightly below body center so suspension can extend downward
+    const connectionY = 0; // At body center, suspension extends down from here
+
+    if (vehicleType === 'motorcycle') {
+      return [
+        new CANNON.Vec3(0, connectionY, 1.0),   // front
+        new CANNON.Vec3(0, connectionY, -1.0),  // rear
+      ];
+    } else if (vehicleType === 'truck') {
+      const width = 1.1;
+      const frontZ = 2.0;
+      const rearZ = -1.8;
+      return [
+        new CANNON.Vec3(-width, connectionY, frontZ),  // front-left
+        new CANNON.Vec3(width, connectionY, frontZ),   // front-right
+        new CANNON.Vec3(-width, connectionY, rearZ),   // rear-left
+        new CANNON.Vec3(width, connectionY, rearZ),    // rear-right
+      ];
+    } else {
+      // Car
+      const width = 0.9;
+      const frontZ = 1.4;
+      const rearZ = -1.4;
+      return [
+        new CANNON.Vec3(-width, connectionY, frontZ),  // front-left
+        new CANNON.Vec3(width, connectionY, frontZ),   // front-right
+        new CANNON.Vec3(-width, connectionY, rearZ),   // rear-left
+        new CANNON.Vec3(width, connectionY, rearZ),    // rear-right
+      ];
+    }
+  }
+
+  removeRaycastVehicle(vehicle: CANNON.RaycastVehicle): void {
+    vehicle.removeFromWorld(this.world);
   }
 
   createTriggerBody(

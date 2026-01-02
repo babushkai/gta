@@ -1,6 +1,7 @@
 import gsap from 'gsap';
 import { Game } from '@/core/Game';
 import { globalEvents } from '@/core/EventEmitter';
+import { MultiplayerUI } from './MultiplayerUI';
 
 interface Notification {
   id: number;
@@ -13,6 +14,7 @@ export class UIManager {
   private game: Game;
   private notifications: Notification[] = [];
   private notificationId: number = 0;
+  private multiplayerUI: MultiplayerUI;
 
   private minimapCanvas: HTMLCanvasElement | null = null;
   private minimapCtx: CanvasRenderingContext2D | null = null;
@@ -34,6 +36,7 @@ export class UIManager {
 
   constructor(game: Game) {
     this.game = game;
+    this.multiplayerUI = new MultiplayerUI(game);
     this.elements = {
       healthBar: null,
       armorBar: null,
@@ -53,6 +56,7 @@ export class UIManager {
     this.setupMinimap();
     this.setupEventListeners();
     this.setupPauseMenu();
+    this.multiplayerUI.initialize();
   }
 
   private cacheElements(): void {
@@ -128,6 +132,7 @@ export class UIManager {
     this.updateMoney();
     this.updateMinimap();
     this.updateMissionTimer();
+    this.multiplayerUI.update();
   }
 
   private updateHealthBar(): void {
@@ -525,5 +530,6 @@ export class UIManager {
       n.element.remove();
     });
     this.notifications = [];
+    this.multiplayerUI.dispose();
   }
 }

@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
 import { Vehicle, VehicleConfig, TrafficConfig } from '@/types';
 import { Game } from '@/core/Game';
 import { COLLISION_GROUPS } from '@/physics/PhysicsWorld';
@@ -341,13 +340,18 @@ export class TrafficManager {
   }
 
   private stopVehicle(traffic: TrafficVehicle): void {
-    const body = traffic.vehicle.body;
-    body.velocity.x *= 0.95;
-    body.velocity.z *= 0.95;
+    // Apply brakes through Rapier vehicle controller
+    this.game.vehiclePhysics.applyVehicleControls(
+      traffic.vehicle.id,
+      0,
+      0,
+      true,
+      traffic.vehicle.config
+    );
     traffic.vehicle.currentSpeed = 0;
   }
 
-  private driveVehicle(traffic: TrafficVehicle, deltaTime: number): void {
+  private driveVehicle(traffic: TrafficVehicle, _deltaTime: number): void {
     if (traffic.currentPathIndex >= traffic.path.length) {
       traffic.currentPathIndex = 0;
       traffic.path = this.generatePath(
@@ -359,7 +363,6 @@ export class TrafficManager {
 
     const target = traffic.path[traffic.currentPathIndex];
     const vehicle = traffic.vehicle;
-    const body = vehicle.body;
 
     const direction = target.clone().sub(vehicle.mesh.position);
     direction.y = 0;
@@ -372,6 +375,7 @@ export class TrafficManager {
 
     direction.normalize();
 
+    // Calculate steering based on angle difference
     const targetAngle = Math.atan2(direction.x, direction.z);
     const currentAngle = vehicle.mesh.rotation.y;
     let angleDiff = targetAngle - currentAngle;
@@ -379,20 +383,22 @@ export class TrafficManager {
     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-    body.angularVelocity.y = angleDiff * 2;
+    // Convert angle difference to steering input (-1 to 1)
+    const steering = Math.max(-1, Math.min(1, angleDiff * 2));
 
-    const currentSpeed = Math.sqrt(body.velocity.x ** 2 + body.velocity.z ** 2);
-    const speedDiff = traffic.targetSpeed / 3.6 - currentSpeed;
+    // Calculate acceleration based on target speed
+    const currentSpeed = vehicle.currentSpeed;
+    const targetSpeedMs = traffic.targetSpeed / 3.6;
+    const acceleration = currentSpeed < targetSpeedMs ? 0.5 : 0;
 
-    if (speedDiff > 0) {
-      const force = direction.clone().multiplyScalar(vehicle.config.acceleration * 50);
-      body.applyForce(
-        new CANNON.Vec3(force.x, 0, force.z),
-        body.position
-      );
-    }
-
-    vehicle.currentSpeed = currentSpeed * 3.6;
+    // Apply controls through Rapier vehicle physics
+    this.game.vehiclePhysics.applyVehicleControls(
+      vehicle.id,
+      acceleration,
+      steering,
+      false,
+      vehicle.config
+    );
   }
 
   private despawnDistantVehicles(): void {

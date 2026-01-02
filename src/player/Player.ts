@@ -17,6 +17,9 @@ export class Player {
   private cameraTarget: THREE.Object3D;
   private cameraOffset: THREE.Vector3 = new THREE.Vector3(0, 3, 8);
   private cameraLookOffset: THREE.Vector3 = new THREE.Vector3(0, 1.5, 0);
+  // Separate interpolated offsets to avoid mutating the base values
+  private currentCameraOffset: THREE.Vector3 = new THREE.Vector3(0, 3, 8);
+  private currentCameraLookOffset: THREE.Vector3 = new THREE.Vector3(0, 1.5, 0);
 
   private moveSpeed: number = 15;
   private sprintMultiplier: number = 2.0;
@@ -27,6 +30,22 @@ export class Player {
 
   private currentWeapon: Weapon | null = null;
   private aimTransition: number = 0;
+
+  // Animation state
+  private animationTime: number = 0;
+  private lastFootstepTime: number = 0;
+  private footstepInterval: number = 0.4; // seconds between footsteps
+
+  // Body part references for animation
+  private leftThigh: THREE.Mesh | null = null;
+  private rightThigh: THREE.Mesh | null = null;
+  private leftCalf: THREE.Mesh | null = null;
+  private rightCalf: THREE.Mesh | null = null;
+  private leftUpperArm: THREE.Mesh | null = null;
+  private rightUpperArm: THREE.Mesh | null = null;
+  private leftForearm: THREE.Mesh | null = null;
+  private rightForearm: THREE.Mesh | null = null;
+  private torso: THREE.Mesh | null = null;
 
   constructor(game: Game) {
     this.game = game;
@@ -129,12 +148,12 @@ export class Player {
     neck.position.y = 1.48;
     this.mesh.add(neck);
 
-    // Torso - upper body (chest)
+    // Torso - upper body (chest) - store reference for animation
     const chestGeometry = new THREE.BoxGeometry(0.38, 0.28, 0.2);
-    const chest = new THREE.Mesh(chestGeometry, shirtMaterial);
-    chest.position.y = 1.28;
-    chest.castShadow = true;
-    this.mesh.add(chest);
+    this.torso = new THREE.Mesh(chestGeometry, shirtMaterial);
+    this.torso.position.y = 1.28;
+    this.torso.castShadow = true;
+    this.mesh.add(this.torso);
 
     // Torso - lower body (abdomen)
     const abdomenGeometry = new THREE.BoxGeometry(0.34, 0.2, 0.18);
@@ -150,35 +169,35 @@ export class Player {
     hips.position.y = 0.9;
     this.mesh.add(hips);
 
-    // Upper arms
+    // Upper arms - store references for animation
     const upperArmGeometry = new THREE.CapsuleGeometry(0.05, 0.2, 4, 8);
 
-    const leftUpperArm = new THREE.Mesh(upperArmGeometry, shirtMaterial);
-    leftUpperArm.position.set(-0.24, 1.28, 0);
-    leftUpperArm.rotation.z = 0.15;
-    leftUpperArm.castShadow = true;
-    this.mesh.add(leftUpperArm);
+    this.leftUpperArm = new THREE.Mesh(upperArmGeometry, shirtMaterial);
+    this.leftUpperArm.position.set(-0.24, 1.28, 0);
+    this.leftUpperArm.rotation.z = 0.15;
+    this.leftUpperArm.castShadow = true;
+    this.mesh.add(this.leftUpperArm);
 
-    const rightUpperArm = new THREE.Mesh(upperArmGeometry, shirtMaterial);
-    rightUpperArm.position.set(0.24, 1.28, 0);
-    rightUpperArm.rotation.z = -0.15;
-    rightUpperArm.castShadow = true;
-    this.mesh.add(rightUpperArm);
+    this.rightUpperArm = new THREE.Mesh(upperArmGeometry, shirtMaterial);
+    this.rightUpperArm.position.set(0.24, 1.28, 0);
+    this.rightUpperArm.rotation.z = -0.15;
+    this.rightUpperArm.castShadow = true;
+    this.mesh.add(this.rightUpperArm);
 
     // Lower arms (forearms) - skin visible
     const forearmGeometry = new THREE.CapsuleGeometry(0.04, 0.2, 4, 8);
 
-    const leftForearm = new THREE.Mesh(forearmGeometry, skinMaterial);
-    leftForearm.position.set(-0.28, 1.0, 0);
-    leftForearm.rotation.z = 0.1;
-    leftForearm.castShadow = true;
-    this.mesh.add(leftForearm);
+    this.leftForearm = new THREE.Mesh(forearmGeometry, skinMaterial);
+    this.leftForearm.position.set(-0.28, 1.0, 0);
+    this.leftForearm.rotation.z = 0.1;
+    this.leftForearm.castShadow = true;
+    this.mesh.add(this.leftForearm);
 
-    const rightForearm = new THREE.Mesh(forearmGeometry, skinMaterial);
-    rightForearm.position.set(0.28, 1.0, 0);
-    rightForearm.rotation.z = -0.1;
-    rightForearm.castShadow = true;
-    this.mesh.add(rightForearm);
+    this.rightForearm = new THREE.Mesh(forearmGeometry, skinMaterial);
+    this.rightForearm.position.set(0.28, 1.0, 0);
+    this.rightForearm.rotation.z = -0.1;
+    this.rightForearm.castShadow = true;
+    this.mesh.add(this.rightForearm);
 
     // Hands
     const handGeometry = new THREE.SphereGeometry(0.04, 8, 8);
@@ -193,31 +212,31 @@ export class Player {
     rightHand.scale.set(1, 1.2, 0.6);
     this.mesh.add(rightHand);
 
-    // Upper legs (thighs)
+    // Upper legs (thighs) - store references for animation
     const thighGeometry = new THREE.CapsuleGeometry(0.07, 0.28, 4, 8);
 
-    const leftThigh = new THREE.Mesh(thighGeometry, pantsMaterial);
-    leftThigh.position.set(-0.1, 0.66, 0);
-    leftThigh.castShadow = true;
-    this.mesh.add(leftThigh);
+    this.leftThigh = new THREE.Mesh(thighGeometry, pantsMaterial);
+    this.leftThigh.position.set(-0.1, 0.66, 0);
+    this.leftThigh.castShadow = true;
+    this.mesh.add(this.leftThigh);
 
-    const rightThigh = new THREE.Mesh(thighGeometry, pantsMaterial);
-    rightThigh.position.set(0.1, 0.66, 0);
-    rightThigh.castShadow = true;
-    this.mesh.add(rightThigh);
+    this.rightThigh = new THREE.Mesh(thighGeometry, pantsMaterial);
+    this.rightThigh.position.set(0.1, 0.66, 0);
+    this.rightThigh.castShadow = true;
+    this.mesh.add(this.rightThigh);
 
-    // Lower legs (calves)
+    // Lower legs (calves) - store references for animation
     const calfGeometry = new THREE.CapsuleGeometry(0.055, 0.28, 4, 8);
 
-    const leftCalf = new THREE.Mesh(calfGeometry, pantsMaterial);
-    leftCalf.position.set(-0.1, 0.32, 0);
-    leftCalf.castShadow = true;
-    this.mesh.add(leftCalf);
+    this.leftCalf = new THREE.Mesh(calfGeometry, pantsMaterial);
+    this.leftCalf.position.set(-0.1, 0.32, 0);
+    this.leftCalf.castShadow = true;
+    this.mesh.add(this.leftCalf);
 
-    const rightCalf = new THREE.Mesh(calfGeometry, pantsMaterial);
-    rightCalf.position.set(0.1, 0.32, 0);
-    rightCalf.castShadow = true;
-    this.mesh.add(rightCalf);
+    this.rightCalf = new THREE.Mesh(calfGeometry, pantsMaterial);
+    this.rightCalf.position.set(0.1, 0.32, 0);
+    this.rightCalf.castShadow = true;
+    this.mesh.add(this.rightCalf);
 
     // Shoes/Feet
     const shoeGeometry = new THREE.BoxGeometry(0.09, 0.06, 0.16);
@@ -252,7 +271,7 @@ export class Player {
 
   private setupInputHandlers(): void {
     this.game.input.on('fire', (data: { pressed: boolean }) => {
-      if (data.pressed && this.currentWeapon) {
+      if (data.pressed && !this.state.isInVehicle) {
         this.shoot();
       }
     });
@@ -263,14 +282,26 @@ export class Player {
     });
 
     this.game.input.on('keydown', (data: { action: string }) => {
-      if (data.action === 'reload' && this.currentWeapon) {
+      if (data.action === 'reload') {
         this.reload();
       }
       if (data.action === 'enterVehicle') {
         this.tryEnterVehicle();
       }
-      if (data.action === 'jump' && this.isGrounded && !this.state.isInVehicle) {
-        this.jump();
+      if (data.action === 'jump') {
+        if (this.state.isInVehicle && this.state.currentVehicle) {
+          // Vehicle jump
+          this.jumpVehicle();
+        } else if (this.isGrounded) {
+          // Human jump
+          this.jump();
+        }
+      }
+      if (data.action === 'nextWeapon') {
+        this.game.weapons.nextWeapon();
+      }
+      if (data.action === 'prevWeapon') {
+        this.game.weapons.previousWeapon();
       }
     });
   }
@@ -294,6 +325,184 @@ export class Player {
     this.checkGrounded();
     this.updateRotation(input, deltaTime);
     this.updateMovement(input, deltaTime);
+    this.updateAnimation(deltaTime);
+  }
+
+  private updateAnimation(deltaTime: number): void {
+    // Animation speed depends on movement state
+    const isMoving = this.state.isMoving && this.isGrounded;
+    const isRunning = this.state.isRunning;
+    const isJumping = this.state.isJumping || !this.isGrounded;
+
+    // More dynamic animation parameters
+    const walkSpeed = isRunning ? 14 : 7; // Faster animation cycle
+    const legSwing = isRunning ? 0.9 : 0.5; // Larger leg rotation
+    const armSwing = isRunning ? 0.8 : 0.4; // Larger arm swing
+    const bobAmount = isRunning ? 0.08 : 0.04; // More vertical bob
+    const hipSway = isRunning ? 0.08 : 0.04; // Hip sway side to side
+    const shoulderTwist = isRunning ? 0.12 : 0.06; // Shoulder rotation
+
+    if (isMoving) {
+      this.animationTime += deltaTime * walkSpeed;
+
+      const phase = Math.sin(this.animationTime);
+      const phaseOffset = Math.sin(this.animationTime + Math.PI); // Opposite phase
+      const halfPhase = Math.sin(this.animationTime * 2); // Double frequency for bob
+
+      // Dynamic leg animation with more bend and lift
+      if (this.leftThigh) {
+        this.leftThigh.rotation.x = phase * legSwing;
+        // Lift leg higher during swing
+        this.leftThigh.position.y = 0.66 + Math.max(0, phase) * 0.04;
+        // Slight outward rotation during run
+        this.leftThigh.rotation.z = isRunning ? Math.max(0, -phase) * 0.1 : 0;
+      }
+      if (this.rightThigh) {
+        this.rightThigh.rotation.x = phaseOffset * legSwing;
+        this.rightThigh.position.y = 0.66 + Math.max(0, phaseOffset) * 0.04;
+        this.rightThigh.rotation.z = isRunning ? Math.max(0, -phaseOffset) * -0.1 : 0;
+      }
+
+      // More dynamic calf animation - higher knee lift when running
+      if (this.leftCalf) {
+        const leftBend = Math.max(0, -phase) * (isRunning ? 0.8 : 0.5);
+        this.leftCalf.rotation.x = leftBend;
+        this.leftCalf.position.y = 0.32 - leftBend * 0.1;
+        this.leftCalf.position.z = -leftBend * 0.12;
+      }
+      if (this.rightCalf) {
+        const rightBend = Math.max(0, -phaseOffset) * (isRunning ? 0.8 : 0.5);
+        this.rightCalf.rotation.x = rightBend;
+        this.rightCalf.position.y = 0.32 - rightBend * 0.1;
+        this.rightCalf.position.z = -rightBend * 0.12;
+      }
+
+      // Dynamic arm swing with elbow bend
+      if (this.leftUpperArm) {
+        this.leftUpperArm.rotation.x = phaseOffset * armSwing;
+        // Arms swing slightly outward when running
+        this.leftUpperArm.rotation.z = 0.15 + (isRunning ? Math.abs(phaseOffset) * 0.1 : 0);
+      }
+      if (this.rightUpperArm) {
+        this.rightUpperArm.rotation.x = phase * armSwing;
+        this.rightUpperArm.rotation.z = -0.15 - (isRunning ? Math.abs(phase) * 0.1 : 0);
+      }
+
+      // Forearms bend more when running
+      if (this.leftForearm) {
+        const elbowBend = isRunning ? 0.6 : 0.35;
+        this.leftForearm.rotation.x = Math.max(0, phaseOffset) * elbowBend + (isRunning ? 0.3 : 0.1);
+      }
+      if (this.rightForearm) {
+        const elbowBend = isRunning ? 0.6 : 0.35;
+        this.rightForearm.rotation.x = Math.max(0, phase) * elbowBend + (isRunning ? 0.3 : 0.1);
+      }
+
+      // Dynamic torso movement - twist, bob, and lean
+      if (this.torso) {
+        // Shoulder twist opposite to hips
+        this.torso.rotation.y = phase * shoulderTwist;
+        // Vertical bob
+        this.torso.position.y = 1.28 + Math.abs(halfPhase) * bobAmount;
+        // Slight forward lean when running
+        this.torso.rotation.x = isRunning ? 0.1 : 0;
+        // Hip sway (lateral movement)
+        this.torso.position.x = phase * hipSway;
+      }
+
+      // Footstep sounds
+      const currentTime = this.game.getElapsedTime();
+      const stepInterval = isRunning ? this.footstepInterval * 0.55 : this.footstepInterval;
+      if (currentTime - this.lastFootstepTime > stepInterval) {
+        this.playFootstep();
+        this.lastFootstepTime = currentTime;
+      }
+    } else if (isJumping) {
+      // Dynamic jumping pose
+      const jumpPhase = Math.sin(this.animationTime * 3);
+
+      if (this.leftThigh) {
+        this.leftThigh.rotation.x = -0.4;
+        this.leftThigh.rotation.z = 0.1;
+      }
+      if (this.rightThigh) {
+        this.rightThigh.rotation.x = -0.4;
+        this.rightThigh.rotation.z = -0.1;
+      }
+      if (this.leftCalf) {
+        this.leftCalf.rotation.x = 0.5 + jumpPhase * 0.1;
+        this.leftCalf.position.y = 0.3;
+        this.leftCalf.position.z = -0.06;
+      }
+      if (this.rightCalf) {
+        this.rightCalf.rotation.x = 0.5 + jumpPhase * 0.1;
+        this.rightCalf.position.y = 0.3;
+        this.rightCalf.position.z = -0.06;
+      }
+      // Arms up for balance
+      if (this.leftUpperArm) {
+        this.leftUpperArm.rotation.x = -0.6;
+        this.leftUpperArm.rotation.z = 0.4;
+      }
+      if (this.rightUpperArm) {
+        this.rightUpperArm.rotation.x = -0.6;
+        this.rightUpperArm.rotation.z = -0.4;
+      }
+      if (this.leftForearm) this.leftForearm.rotation.x = 0.3;
+      if (this.rightForearm) this.rightForearm.rotation.x = 0.3;
+
+      // Continue animating in air
+      this.animationTime += deltaTime * 5;
+    } else {
+      // Idle pose with subtle breathing animation
+      const breathPhase = Math.sin(this.game.getElapsedTime() * 1.5);
+      const lerpSpeed = 8 * deltaTime;
+
+      if (this.leftThigh) {
+        this.leftThigh.rotation.x *= (1 - lerpSpeed);
+        this.leftThigh.rotation.z *= (1 - lerpSpeed);
+        this.leftThigh.position.y = 0.66;
+      }
+      if (this.rightThigh) {
+        this.rightThigh.rotation.x *= (1 - lerpSpeed);
+        this.rightThigh.rotation.z *= (1 - lerpSpeed);
+        this.rightThigh.position.y = 0.66;
+      }
+      if (this.leftCalf) {
+        this.leftCalf.rotation.x *= (1 - lerpSpeed);
+        this.leftCalf.position.y = 0.32;
+        this.leftCalf.position.z = 0;
+      }
+      if (this.rightCalf) {
+        this.rightCalf.rotation.x *= (1 - lerpSpeed);
+        this.rightCalf.position.y = 0.32;
+        this.rightCalf.position.z = 0;
+      }
+      if (this.leftUpperArm) {
+        this.leftUpperArm.rotation.x *= (1 - lerpSpeed);
+        this.leftUpperArm.rotation.z = 0.15;
+      }
+      if (this.rightUpperArm) {
+        this.rightUpperArm.rotation.x *= (1 - lerpSpeed);
+        this.rightUpperArm.rotation.z = -0.15;
+      }
+      if (this.leftForearm) this.leftForearm.rotation.x *= (1 - lerpSpeed);
+      if (this.rightForearm) this.rightForearm.rotation.x *= (1 - lerpSpeed);
+      if (this.torso) {
+        this.torso.rotation.y *= (1 - lerpSpeed);
+        this.torso.rotation.x *= (1 - lerpSpeed);
+        this.torso.position.x *= (1 - lerpSpeed);
+        // Subtle breathing motion
+        this.torso.position.y = 1.28 + breathPhase * 0.01;
+      }
+
+      // Reset animation time smoothly
+      this.animationTime *= (1 - lerpSpeed);
+    }
+  }
+
+  private playFootstep(): void {
+    this.game.audio.playSound('footstep', { volume: 0.3 });
   }
 
   // Called after physics step to sync mesh position with physics body
@@ -358,16 +567,19 @@ export class Player {
     }
   }
 
+  private wasGrounded: boolean = true;
+
   private checkGrounded(): void {
-    // Raycast from just above the feet (body position is at character's feet level)
+    // Raycast from character center downward
+    // Use a longer ray to ensure reliable ground detection
     const from = new THREE.Vector3(
       this.body.position.x,
-      this.body.position.y + 0.1,
+      this.body.position.y + 0.5, // Start from higher up
       this.body.position.z
     );
     const to = new THREE.Vector3(
       this.body.position.x,
-      this.body.position.y - 0.2,
+      this.body.position.y - 0.3, // Check further down
       this.body.position.z
     );
 
@@ -375,56 +587,88 @@ export class Player {
       collisionFilterMask: COLLISION_GROUPS.GROUND | COLLISION_GROUPS.STATIC
     });
 
+    const wasInAir = !this.wasGrounded;
+    this.wasGrounded = this.isGrounded;
     this.isGrounded = result.hit;
+
+    // Play landing sound when hitting ground after being in air
+    if (this.isGrounded && wasInAir && Math.abs(this.body.velocity.y) > 2) {
+      this.game.audio.playSound('land', { volume: 0.5 });
+    }
+
     this.state.isJumping = !this.isGrounded;
   }
 
   private jump(): void {
     if (!this.isGrounded) return;
 
+    // Apply strong upward impulse
     this.body.velocity.y = this.jumpForce;
     this.state.isJumping = true;
     this.isGrounded = false;
+    this.wasGrounded = false;
 
     this.game.audio.playSound('jump');
   }
 
-  private updateInVehicle(deltaTime: number): void {
+  private jumpVehicle(): void {
+    if (!this.state.currentVehicle) return;
+
+    const vehicleId = this.state.currentVehicle.id;
+    const jumped = this.game.vehiclePhysics.jumpVehicle(vehicleId);
+
+    if (jumped) {
+      // Play jump sound effect
+      this.game.audio.playSound('car_horn');
+    }
+  }
+
+  private updateInVehicle(_deltaTime: number): void {
     if (!this.state.currentVehicle) return;
 
     const vehicle = this.state.currentVehicle;
+    // Sync player position and rotation with vehicle
     this.mesh.position.copy(vehicle.mesh.position);
-    this.mesh.rotation.copy(vehicle.mesh.rotation);
+    // Use quaternion for proper rotation sync (vehicle uses quaternion from physics)
+    this.mesh.quaternion.copy(vehicle.mesh.quaternion);
     this.mesh.visible = false;
   }
 
   private updateCamera(deltaTime: number): void {
-    const input = this.game.input.getState();
+    // Determine target offsets based on state
+    let targetOffset: THREE.Vector3;
+    let targetLookOffset: THREE.Vector3;
 
-    let targetOffset = this.cameraOffset.clone();
-    let targetLookOffset = this.cameraLookOffset.clone();
-
-    if (this.state.isAiming) {
+    if (this.state.isInVehicle && this.state.currentVehicle) {
+      // Vehicle camera: higher and further back, look at vehicle center
+      targetOffset = new THREE.Vector3(0, 5, 12);
+      targetLookOffset = new THREE.Vector3(0, 1, 0);
+    } else if (this.state.isAiming) {
+      // Aiming camera: over-the-shoulder
       this.aimTransition = Math.min(1, this.aimTransition + deltaTime * 5);
       targetOffset = new THREE.Vector3(0.5, 2, 3);
       targetLookOffset = new THREE.Vector3(0, 1.6, 0);
     } else {
+      // Default on-foot camera
       this.aimTransition = Math.max(0, this.aimTransition - deltaTime * 5);
+      targetOffset = this.cameraOffset.clone();
+      targetLookOffset = this.cameraLookOffset.clone();
     }
 
-    if (this.state.isInVehicle && this.state.currentVehicle) {
-      targetOffset = new THREE.Vector3(0, 4, 10);
-    }
+    // Smoothly interpolate current offsets toward target (don't mutate base values)
+    this.currentCameraOffset.lerp(targetOffset, deltaTime * 5);
+    this.currentCameraLookOffset.lerp(targetLookOffset, deltaTime * 5);
 
-    const currentOffset = this.cameraOffset.lerp(targetOffset, deltaTime * 5);
-    const currentLookOffset = this.cameraLookOffset.lerp(targetLookOffset, deltaTime * 5);
-
-    const rotatedOffset = currentOffset.clone().applyEuler(this.mesh.rotation);
+    // Calculate camera position based on player/vehicle orientation
+    // Use quaternion for proper rotation (avoids gimbal lock issues with vehicles)
+    const rotatedOffset = this.currentCameraOffset.clone().applyQuaternion(this.mesh.quaternion);
     const targetPosition = this.mesh.position.clone().add(rotatedOffset);
 
+    // Smooth camera movement
     this.game.camera.position.lerp(targetPosition, deltaTime * 8);
 
-    const lookAt = this.mesh.position.clone().add(currentLookOffset);
+    // Camera look target
+    const lookAt = this.mesh.position.clone().add(this.currentCameraLookOffset);
     this.cameraTarget.position.lerp(lookAt, deltaTime * 10);
     this.game.camera.lookAt(this.cameraTarget.position);
   }
@@ -453,56 +697,24 @@ export class Player {
   }
 
   private shoot(): void {
-    if (!this.currentWeapon || this.state.isReloading) return;
-    if (this.currentWeapon.currentAmmo <= 0) {
-      this.game.audio.playSound('empty_click');
-      return;
+    const fired = this.game.weapons.fire();
+    if (fired) {
+      this.state.isShooting = true;
+      const weapon = this.game.weapons.getCurrentWeapon();
+      if (weapon) {
+        globalEvents.emit('weapon_fire', {
+          weapon: weapon.config.id,
+          hit: true
+        });
+      }
+      setTimeout(() => {
+        this.state.isShooting = false;
+      }, 100);
     }
-
-    this.currentWeapon.currentAmmo--;
-    this.state.isShooting = true;
-
-    this.game.audio.playSound(this.currentWeapon.config.sounds.fire);
-
-    const direction = new THREE.Vector3(0, 0, -1)
-      .applyQuaternion(this.game.camera.quaternion);
-    const from = this.game.camera.position.clone();
-    const to = from.clone().add(direction.multiplyScalar(this.currentWeapon.config.range));
-
-    const result = this.game.physics.raycast(from, to);
-    if (result.hit && result.point) {
-      this.game.world.createBulletHole(result.point, result.normal!);
-
-      globalEvents.emit('weapon_fire', {
-        weapon: this.currentWeapon.config.id,
-        hit: true,
-        position: result.point
-      });
-    }
-
-    setTimeout(() => {
-      this.state.isShooting = false;
-    }, 1000 / this.currentWeapon.config.fireRate);
   }
 
   private reload(): void {
-    if (!this.currentWeapon || this.state.isReloading) return;
-    if (this.currentWeapon.reserveAmmo <= 0) return;
-    if (this.currentWeapon.currentAmmo >= this.currentWeapon.config.magazineSize) return;
-
-    this.state.isReloading = true;
-    this.game.audio.playSound(this.currentWeapon.config.sounds.reload);
-
-    setTimeout(() => {
-      if (!this.currentWeapon) return;
-
-      const needed = this.currentWeapon.config.magazineSize - this.currentWeapon.currentAmmo;
-      const available = Math.min(needed, this.currentWeapon.reserveAmmo);
-
-      this.currentWeapon.currentAmmo += available;
-      this.currentWeapon.reserveAmmo -= available;
-      this.state.isReloading = false;
-    }, this.currentWeapon.config.reloadTime * 1000);
+    this.game.weapons.reload();
   }
 
   tryEnterVehicle(): void {
@@ -547,16 +759,33 @@ export class Player {
   exitVehicle(): void {
     if (!this.state.currentVehicle) return;
 
-    const exitPosition = this.state.currentVehicle.mesh.position.clone();
-    exitPosition.x += 2;
+    // Calculate exit position to the side of the vehicle
+    const vehiclePos = this.state.currentVehicle.mesh.position.clone();
+    const vehicleRotY = this.state.currentVehicle.mesh.rotation.y;
+
+    // Exit to the left side of the vehicle
+    const exitOffset = new THREE.Vector3(-2.5, 0, 0);
+    exitOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), vehicleRotY);
+    const exitPosition = vehiclePos.add(exitOffset);
 
     this.state.currentVehicle.driver = null;
     this.state.isInVehicle = false;
     this.state.currentVehicle = null;
     this.mesh.visible = true;
 
+    // Reset mesh rotation to upright (clear quaternion from vehicle)
+    this.mesh.quaternion.set(0, 0, 0, 1);
+    this.mesh.rotation.set(0, vehicleRotY, 0);
+
+    // Reset body quaternion to upright
+    this.body.quaternion.set(0, 0, 0, 1);
+
+    // Set position and add body back to world
     this.setPosition(exitPosition.x, exitPosition.y + 1, exitPosition.z);
     this.game.physics.world.addBody(this.body);
+
+    // Wake up the body to ensure physics work immediately
+    this.body.wakeUp();
 
     globalEvents.emit('vehicle_exit', {});
     this.game.audio.playSound('car_door');
@@ -564,6 +793,14 @@ export class Player {
 
   takeDamage(amount: number, fromDirection?: THREE.Vector3): void {
     if (this.state.isDead) return;
+
+    // If player is in a vehicle, ALL damage goes to the vehicle
+    // Player is completely protected while inside
+    if (this.state.isInVehicle && this.state.currentVehicle) {
+      // Route all damage to vehicle - player is invulnerable inside
+      this.game.vehicles.damageVehicle(this.state.currentVehicle.id, amount);
+      return; // Player takes no damage while in vehicle
+    }
 
     if (this.stats.armor > 0) {
       const armorDamage = Math.min(this.stats.armor, amount * 0.7);
@@ -576,7 +813,7 @@ export class Player {
 
     globalEvents.emit('damage_taken', { amount, health: this.stats.health });
 
-    if (fromDirection) {
+    if (fromDirection && !this.state.isInVehicle) {
       const pushForce = fromDirection.normalize().multiplyScalar(-200);
       this.body.applyImpulse(
         new CANNON.Vec3(pushForce.x, pushForce.y, pushForce.z),
@@ -630,7 +867,12 @@ export class Player {
     this.body.position.set(x, y, z);
     this.body.velocity.setZero();
     this.body.angularVelocity.setZero();
+    // Clear any accumulated forces
+    this.body.force.setZero();
+    this.body.torque.setZero();
     this.mesh.position.set(x, y, z);
+    // Wake up the body to ensure it responds to physics
+    this.body.wakeUp();
   }
 
   setRotation(y: number): void {
@@ -643,6 +885,6 @@ export class Player {
   }
 
   getCurrentWeapon(): Weapon | null {
-    return this.currentWeapon;
+    return this.game.weapons.getCurrentWeapon();
   }
 }

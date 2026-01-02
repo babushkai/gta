@@ -105,50 +105,123 @@ export class WeatherSystem {
   private setupLighting(): void {
     this.sun.position.set(100, 100, 50);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.width = 2048;
-    this.sun.shadow.mapSize.height = 2048;
-    this.sun.shadow.camera.near = 0.5;
-    this.sun.shadow.camera.far = 500;
-    this.sun.shadow.camera.left = -150;
-    this.sun.shadow.camera.right = 150;
-    this.sun.shadow.camera.top = 150;
-    this.sun.shadow.camera.bottom = -150;
-    this.sun.shadow.bias = -0.0001;
+
+    // Higher quality shadows with larger map
+    this.sun.shadow.mapSize.width = 4096;
+    this.sun.shadow.mapSize.height = 4096;
+    this.sun.shadow.camera.near = 1;
+    this.sun.shadow.camera.far = 400;
+    this.sun.shadow.camera.left = -100;
+    this.sun.shadow.camera.right = 100;
+    this.sun.shadow.camera.top = 100;
+    this.sun.shadow.camera.bottom = -100;
+    this.sun.shadow.bias = -0.0003;
+    this.sun.shadow.normalBias = 0.02;
+    this.sun.shadow.radius = 2; // Soft shadow edges
 
     this.game.scene.add(this.sun);
     this.game.scene.add(this.sun.target);
     this.game.scene.add(this.ambient);
     this.game.scene.add(this.hemisphere);
 
-    this.game.scene.fog = new THREE.FogExp2(0x87ceeb, 0.0005);
+    // Improved fog with better distance
+    this.game.scene.fog = new THREE.FogExp2(0x87ceeb, 0.0003);
   }
 
   private createSkybox(): void {
-    const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+    const skyGeometry = new THREE.SphereGeometry(500, 64, 64);
     const skyMaterial = new THREE.ShaderMaterial({
       uniforms: {
         topColor: { value: new THREE.Color(0x0077ff) },
         bottomColor: { value: new THREE.Color(0xffffff) },
-        offset: { value: 33 },
-        exponent: { value: 0.6 }
+        horizonColor: { value: new THREE.Color(0x87ceeb) },
+        sunPosition: { value: new THREE.Vector3(0, 1, 0) },
+        sunColor: { value: new THREE.Color(0xffffee) },
+        moonPosition: { value: new THREE.Vector3(0, -1, 0) },
+        starIntensity: { value: 0.0 },
+        time: { value: 0.0 }
       },
       vertexShader: `
         varying vec3 vWorldPosition;
+        varying vec3 vPosition;
         void main() {
           vec4 worldPosition = modelMatrix * vec4(position, 1.0);
           vWorldPosition = worldPosition.xyz;
+          vPosition = position;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: `
         uniform vec3 topColor;
         uniform vec3 bottomColor;
-        uniform float offset;
-        uniform float exponent;
+        uniform vec3 horizonColor;
+        uniform vec3 sunPosition;
+        uniform vec3 sunColor;
+        uniform vec3 moonPosition;
+        uniform float starIntensity;
+        uniform float time;
         varying vec3 vWorldPosition;
+        varying vec3 vPosition;
+
+        // Pseudo-random for stars
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
         void main() {
-          float h = normalize(vWorldPosition + offset).y;
-          gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+          vec3 direction = normalize(vWorldPosition);
+          float h = direction.y;
+
+          // Sky gradient with horizon glow
+          vec3 skyColor;
+          if (h > 0.0) {
+            float horizonFade = 1.0 - pow(h, 0.4);
+            skyColor = mix(topColor, horizonColor, horizonFade * 0.5);
+            skyColor = mix(skyColor, bottomColor, pow(1.0 - h, 4.0));
+          } else {
+            skyColor = mix(horizonColor, bottomColor, pow(min(-h + 0.1, 1.0), 0.5));
+          }
+
+          // Sun disk and glow
+          vec3 sunDir = normalize(sunPosition);
+          float sunDot = dot(direction, sunDir);
+          if (sunDot > 0.0) {
+            // Sun disk
+            float sunSize = 0.9995;
+            if (sunDot > sunSize) {
+              float sunEdge = smoothstep(sunSize, 0.9999, sunDot);
+              skyColor = mix(skyColor, sunColor * 2.0, sunEdge);
+            }
+            // Sun glow
+            float sunGlow = pow(max(sunDot, 0.0), 8.0) * 0.5;
+            skyColor += sunColor * sunGlow;
+            // Atmospheric scattering near horizon
+            if (sunDir.y < 0.3 && sunDir.y > -0.1) {
+              float scatterAmount = pow(max(sunDot, 0.0), 2.0) * (1.0 - sunDir.y * 3.0);
+              skyColor = mix(skyColor, vec3(1.0, 0.6, 0.3), scatterAmount * 0.4);
+            }
+          }
+
+          // Moon
+          vec3 moonDir = normalize(moonPosition);
+          float moonDot = dot(direction, moonDir);
+          if (moonDot > 0.999) {
+            float moonEdge = smoothstep(0.999, 0.9995, moonDot);
+            skyColor = mix(skyColor, vec3(0.9, 0.9, 1.0), moonEdge * starIntensity);
+          }
+
+          // Stars (only at night)
+          if (starIntensity > 0.0 && h > 0.0) {
+            vec2 starCoord = vPosition.xz / (h + 0.1) * 50.0;
+            float star = hash(floor(starCoord));
+            if (star > 0.99) {
+              float twinkle = sin(time * 3.0 + star * 100.0) * 0.5 + 0.5;
+              float starBrightness = (star - 0.99) * 100.0 * twinkle;
+              skyColor += vec3(starBrightness) * starIntensity * h;
+            }
+          }
+
+          gl_FragColor = vec4(skyColor, 1.0);
         }
       `,
       side: THREE.BackSide
@@ -261,19 +334,20 @@ export class WeatherSystem {
     this.sun.position.copy(this.state.sunPosition);
     this.sun.target.position.copy(this.game.player.position);
 
-    const dayProgress = Math.sin(angle);
     const isDaytime = time > 6 && time < 20;
+    const isSunset = time >= 17 && time < 20;
+    const isSunrise = time >= 5 && time < 7;
 
     let sunColor: THREE.Color;
     let sunIntensity: number;
 
-    if (time >= 5 && time < 7) {
+    if (isSunrise) {
       sunColor = new THREE.Color(0xff7733);
       sunIntensity = 0.5 + ((time - 5) / 2) * 0.5;
     } else if (time >= 7 && time < 17) {
       sunColor = new THREE.Color(0xffffff);
       sunIntensity = this.config.sunIntensity;
-    } else if (time >= 17 && time < 20) {
+    } else if (isSunset) {
       sunColor = new THREE.Color(0xff5500);
       sunIntensity = 1 - ((time - 17) / 3) * 0.8;
     } else {
@@ -284,17 +358,76 @@ export class WeatherSystem {
     this.sun.color.copy(sunColor);
     this.sun.intensity = sunIntensity * this.config.sunIntensity;
 
+    // Update exposure based on time of day
+    if (isDaytime) {
+      this.game.renderer.setExposure(1.0);
+    } else if (isSunset || isSunrise) {
+      this.game.renderer.setExposure(1.2);
+    } else {
+      this.game.renderer.setExposure(0.6);
+    }
+
     if (this.skybox) {
       const material = this.skybox.material as THREE.ShaderMaterial;
-      if (isDaytime) {
-        material.uniforms.topColor.value.setHex(0x0077ff);
-        material.uniforms.bottomColor.value.setHex(0x87ceeb);
-      } else if (time >= 17 && time < 20) {
-        material.uniforms.topColor.value.setHex(0xff5533);
-        material.uniforms.bottomColor.value.setHex(0xffaa66);
+
+      // Update sun/moon positions in shader
+      material.uniforms.sunPosition.value.copy(this.state.sunPosition.clone().normalize());
+      material.uniforms.moonPosition.value.set(
+        -Math.cos(angle) * 0.8,
+        -Math.sin(angle) * 0.8,
+        0.3
+      ).normalize();
+
+      // Update time for star twinkling
+      material.uniforms.time.value = performance.now() * 0.001;
+
+      // Calculate star intensity (visible at night)
+      let starIntensity = 0;
+      if (time < 5 || time > 21) {
+        starIntensity = 1.0;
+      } else if (time >= 5 && time < 7) {
+        starIntensity = 1.0 - (time - 5) / 2;
+      } else if (time >= 19 && time <= 21) {
+        starIntensity = (time - 19) / 2;
+      }
+      material.uniforms.starIntensity.value = starIntensity * (1 - this.config.cloudCoverage);
+
+      // Sky colors based on time
+      if (isDaytime && !isSunset) {
+        material.uniforms.topColor.value.setHex(0x0066dd);
+        material.uniforms.bottomColor.value.setHex(0x88bbee);
+        material.uniforms.horizonColor.value.setHex(0xaaddff);
+        material.uniforms.sunColor.value.setHex(0xffffee);
+      } else if (isSunrise) {
+        const t = (time - 5) / 2;
+        material.uniforms.topColor.value.setHex(0x1144aa);
+        material.uniforms.bottomColor.value.lerpColors(
+          new THREE.Color(0xff6633),
+          new THREE.Color(0x88bbee),
+          t
+        );
+        material.uniforms.horizonColor.value.setHex(0xffaa66);
+        material.uniforms.sunColor.value.setHex(0xffaa44);
+      } else if (isSunset) {
+        const t = (time - 17) / 3;
+        material.uniforms.topColor.value.lerpColors(
+          new THREE.Color(0x4466aa),
+          new THREE.Color(0x111133),
+          t
+        );
+        material.uniforms.bottomColor.value.lerpColors(
+          new THREE.Color(0xff5533),
+          new THREE.Color(0x221122),
+          t
+        );
+        material.uniforms.horizonColor.value.setHex(0xff6644);
+        material.uniforms.sunColor.value.setHex(0xff4422);
       } else {
-        material.uniforms.topColor.value.setHex(0x000022);
-        material.uniforms.bottomColor.value.setHex(0x111133);
+        // Night
+        material.uniforms.topColor.value.setHex(0x000011);
+        material.uniforms.bottomColor.value.setHex(0x111122);
+        material.uniforms.horizonColor.value.setHex(0x1a1a2e);
+        material.uniforms.sunColor.value.setHex(0x444466);
       }
     }
 
@@ -302,6 +435,15 @@ export class WeatherSystem {
       ? this.config.ambientLight
       : this.config.ambientLight * 0.3;
     this.ambient.intensity = ambientIntensity;
+
+    // Update hemisphere light colors
+    if (isDaytime) {
+      this.hemisphere.color.setHex(0x87ceeb);
+      this.hemisphere.groundColor.setHex(0x556655);
+    } else {
+      this.hemisphere.color.setHex(0x111133);
+      this.hemisphere.groundColor.setHex(0x222222);
+    }
 
     if (this.game.scene.fog) {
       const fog = this.game.scene.fog as THREE.FogExp2;

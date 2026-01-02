@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { RapierVehicle } from '@/physics/RapierVehiclePhysics';
 
 // Core Types
 export interface GameConfig {
@@ -91,7 +92,7 @@ export interface Vehicle {
   id: string;
   config: VehicleConfig;
   mesh: THREE.Group;
-  body: CANNON.Body;
+  rapierVehicle: RapierVehicle;
   currentSpeed: number;
   health: number;
   fuel: number;
@@ -104,7 +105,6 @@ export interface Vehicle {
 
 export interface VehicleWheel {
   mesh: THREE.Mesh;
-  constraint: CANNON.HingeConstraint;
   steering: boolean;
   powered: boolean;
 }
@@ -356,6 +356,7 @@ export interface Pickup {
   position: THREE.Vector3;
   respawnTime: number;
   collected: boolean;
+  weaponId?: string;
 }
 
 export type PickupType =
