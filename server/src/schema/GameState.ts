@@ -1,7 +1,7 @@
 import { Schema, type, MapSchema, ArraySchema } from '@colyseus/schema';
-import { PlayerState } from './PlayerState.js';
-import { VehicleState } from './VehicleState.js';
-import { NPCState } from './NPCState.js';
+import { PlayerState } from './PlayerState';
+import { VehicleState } from './VehicleState';
+import { NPCState } from './NPCState';
 
 export class GameState extends Schema {
   // All connected players

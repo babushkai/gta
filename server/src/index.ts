@@ -1,8 +1,8 @@
-import { Server, WebSocketTransport } from 'colyseus';
+import { Server } from 'colyseus';
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
-import { GameRoom } from './rooms/GameRoom.js';
+import { GameRoom } from './rooms/GameRoom';
 
 const port = parseInt(process.env.PORT || '2567');
 
@@ -33,18 +33,15 @@ app.get('/rooms', async (req, res) => {
 
 const httpServer = createServer(app);
 
-const gameServer = new Server({
-  transport: new WebSocketTransport({
-    server: httpServer,
-  }),
-});
+const gameServer = new Server();
+gameServer.attach({ server: httpServer });
 
 // Register game room
 gameServer.define('game', GameRoom)
   .enableRealtimeListing();
 
 // Start the server
-gameServer.listen(port).then(() => {
+httpServer.listen(port, () => {
   console.log(`
   ╔══════════════════════════════════════════════════╗
   ║                                                  ║
@@ -56,9 +53,6 @@ gameServer.listen(port).then(() => {
   ║                                                  ║
   ╚══════════════════════════════════════════════════╝
   `);
-}).catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
 });
 
 // Graceful shutdown

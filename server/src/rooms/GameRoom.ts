@@ -1,5 +1,5 @@
 import { Room, Client } from 'colyseus';
-import { GameState, PlayerState, VehicleState, NPCState } from '../schema/index.js';
+import { GameState, PlayerState, VehicleState, NPCState } from '../schema/index';
 
 // Vehicle spawn configurations
 const VEHICLE_SPAWNS = [

@@ -90,9 +90,13 @@ export class NetworkManager extends EventEmitter {
   constructor(game: Game) {
     super();
     this.game = game;
+
+    // Use environment variable for server URL, fallback to localhost for development
+    const defaultServerUrl = import.meta.env.VITE_SERVER_URL || 'ws://localhost:2567';
+
     this.config = {
       enabled: false,
-      serverUrl: 'ws://localhost:2567',
+      serverUrl: defaultServerUrl,
       playerName: 'Player',
       autoConnect: false,
     };
