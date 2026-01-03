@@ -128,7 +128,7 @@ export class NetworkManager extends EventEmitter {
       console.log(`Connecting to multiplayer server: ${url}`);
       this.client = new Client(url);
 
-      // Join or create room - always use single shared room
+      // Join or create room
       if (roomId) {
         this.room = await this.client.joinById<GameState>(roomId, {
           name: this.config.playerName,
@@ -136,7 +136,6 @@ export class NetworkManager extends EventEmitter {
       } else {
         this.room = await this.client.joinOrCreate<GameState>('game', {
           name: this.config.playerName,
-          singleRoom: 'main', // Everyone joins the same room
         });
       }
 

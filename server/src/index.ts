@@ -36,9 +36,8 @@ const httpServer = createServer(app);
 const gameServer = new Server();
 gameServer.attach({ server: httpServer });
 
-// Register game room - single room for everyone
+// Register game room
 gameServer.define('game', GameRoom)
-  .filterBy(['singleRoom'])
   .enableRealtimeListing();
 
 // Start the server
