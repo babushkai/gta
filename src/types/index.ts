@@ -196,6 +196,7 @@ export interface AIBehavior {
   lastKnownPlayerPosition: THREE.Vector3 | null;
   patrolPoints: THREE.Vector3[];
   currentPatrolIndex: number;
+  provoked: boolean;
 }
 
 export interface PathNode {

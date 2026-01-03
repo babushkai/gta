@@ -151,7 +151,8 @@ export class AIManager {
         alertLevel: 0,
         lastKnownPlayerPosition: null,
         patrolPoints: this.generatePatrolPoints(position),
-        currentPatrolIndex: 0
+        currentPatrolIndex: 0,
+        provoked: false
       },
       lastPathUpdate: 0
     };
@@ -805,7 +806,7 @@ export class AIManager {
           npc.behavior.state = 'attacking';
           npc.behavior.alertLevel = 100;
         }
-      } else if (npc.config.hostile) {
+      } else if (npc.config.hostile && npc.behavior.provoked) {
         if (distance < 20) {
           npc.behavior.state = 'attacking';
           npc.behavior.alertLevel = 100;
@@ -867,6 +868,7 @@ export class AIManager {
       this.killNPC(npc, fromDirection);
     } else {
       if (npc.config.hostile) {
+        npc.behavior.provoked = true;
         npc.behavior.state = 'attacking';
         npc.behavior.alertLevel = 100;
       } else {
