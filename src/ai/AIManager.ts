@@ -61,16 +61,29 @@ export class AIManager {
   private npcs: Map<string, NPC> = new Map();
   private npcIdCounter: number = 0;
 
-  private maxNPCs: number = 50;
-  private updateRadius: number = 100;
-  private despawnRadius: number = 150;
+  private maxNPCs: number;
+  private updateRadius: number;
+  private despawnRadius: number;
+  private targetNPCCount: number;
 
   private behaviorUpdateInterval: number = 0.5;
   private lastBehaviorUpdate: number = 0;
+  private isMobile: boolean;
 
   constructor(game: Game) {
     this.game = game;
     this.pathfinding = new Pathfinding();
+
+    // Detect mobile for performance
+    this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+                    ('ontouchstart' in window) ||
+                    window.innerWidth < 768;
+
+    // Reduce NPC count on mobile
+    this.maxNPCs = this.isMobile ? 10 : 30;
+    this.updateRadius = this.isMobile ? 50 : 100;
+    this.despawnRadius = this.isMobile ? 80 : 150;
+    this.targetNPCCount = this.isMobile ? 5 : 15;
   }
 
   async initialize(): Promise<void> {
@@ -83,8 +96,8 @@ export class AIManager {
   }
 
   private spawnInitialNPCs(): void {
-    // Spawn civilians
-    for (let i = 0; i < 15; i++) {
+    // Spawn civilians (reduced on mobile)
+    for (let i = 0; i < this.targetNPCCount; i++) {
       const position = this.pathfinding.getRandomWalkablePoint(
         this.game.player.position,
         80
@@ -844,7 +857,7 @@ export class AIManager {
       npc => npc.mesh.position.distanceTo(playerPos) < this.updateRadius
     );
 
-    if (activeNPCs.length < 15) {
+    if (activeNPCs.length < this.targetNPCCount) {
       const spawnPos = this.pathfinding.getRandomWalkablePoint(playerPos, 70);
       spawnPos.y = 1;
 

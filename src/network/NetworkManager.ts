@@ -80,9 +80,9 @@ export class NetworkManager extends EventEmitter {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
 
-  // Position sync throttle
+  // Position sync throttle (slower on mobile for performance)
   private lastPositionSend: number = 0;
-  private positionSendInterval: number = 50; // 20 Hz
+  private positionSendInterval: number;
 
   // Input state for sending
   private lastInputState: Record<string, boolean> = {};
@@ -90,6 +90,13 @@ export class NetworkManager extends EventEmitter {
   constructor(game: Game) {
     super();
     this.game = game;
+
+    // Detect mobile for performance
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+                     ('ontouchstart' in window);
+
+    // Slower sync on mobile (10 Hz vs 20 Hz)
+    this.positionSendInterval = isMobile ? 100 : 50;
 
     // Use environment variable for server URL, fallback to localhost for development
     const defaultServerUrl = import.meta.env.VITE_SERVER_URL || 'ws://localhost:2567';
@@ -118,7 +125,7 @@ export class NetworkManager extends EventEmitter {
       console.log(`Connecting to multiplayer server: ${url}`);
       this.client = new Client(url);
 
-      // Join or create room
+      // Join or create room - always use single shared room
       if (roomId) {
         this.room = await this.client.joinById<GameState>(roomId, {
           name: this.config.playerName,
@@ -126,6 +133,7 @@ export class NetworkManager extends EventEmitter {
       } else {
         this.room = await this.client.joinOrCreate<GameState>('game', {
           name: this.config.playerName,
+          singleRoom: 'main', // Everyone joins the same room
         });
       }
 

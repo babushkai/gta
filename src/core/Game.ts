@@ -97,16 +97,16 @@ export class Game extends EventEmitter {
     return {
       debug: false,
       graphics: {
-        antialias: !isMobile, // Disable on mobile
+        antialias: false, // Disable everywhere for performance
         shadows: !isMobile, // Disable shadows on mobile
-        shadowMapSize: isMobile ? 512 : 2048,
-        postProcessing: !isMobile, // Disable post-processing on mobile
-        bloom: !isMobile,
+        shadowMapSize: isMobile ? 256 : 1024, // Smaller shadow maps
+        postProcessing: false, // Disable post-processing everywhere
+        bloom: false,
         ssao: false, // Disable SSAO everywhere (expensive)
         dof: false,
         motionBlur: false, // Disable motion blur
         fov: 75,
-        drawDistance: isMobile ? 300 : 1000 // Reduce draw distance on mobile
+        drawDistance: isMobile ? 150 : 400 // Reduced draw distance
       },
       audio: {
         masterVolume: 1.0,
@@ -116,7 +116,7 @@ export class Game extends EventEmitter {
       },
       physics: {
         gravity: -30,
-        substeps: isMobile ? 3 : 5, // Fewer physics substeps on mobile
+        substeps: isMobile ? 2 : 3, // Fewer physics substeps
         friction: 0.5,
         restitution: 0.3
       },
