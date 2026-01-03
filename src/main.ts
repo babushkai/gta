@@ -9,10 +9,19 @@ async function startGame(playerName: string): Promise<void> {
     game = Game.getInstance();
     await game.initialize();
 
-    // Set player name in network manager
+    // Set player name in network manager and connect to multiplayer
     if (game.network) {
       game.network.setConfig({ playerName, enabled: true, autoConnect: true });
-      game.network.connect();
+      try {
+        const connected = await game.network.connect();
+        if (connected) {
+          console.log('✅ Connected to multiplayer server!');
+        } else {
+          console.warn('⚠️ Could not connect to multiplayer server');
+        }
+      } catch (err) {
+        console.error('❌ Multiplayer connection error:', err);
+      }
     }
 
     // Hide start screen

@@ -180,14 +180,19 @@ export class NetworkManager extends EventEmitter {
 
     // Handle player state changes
     this.room.state.players.onAdd((player: PlayerState, sessionId: string) => {
-      console.log(`Player added: ${sessionId}`);
+      console.log(`🎮 Player added: ${sessionId}, name: ${player.name}, localId: ${this.localPlayerId}`);
 
       // Don't create remote player for local player
-      if (sessionId === this.localPlayerId) return;
+      if (sessionId === this.localPlayerId) {
+        console.log('  → This is the local player, skipping');
+        return;
+      }
 
+      console.log(`  → Creating remote player mesh for ${player.name}`);
       const remotePlayer = new RemotePlayer(this.game, player);
       this.remotePlayers.set(sessionId, remotePlayer);
       this.emit('playerJoined', { player });
+      console.log(`  → Total remote players: ${this.remotePlayers.size}`);
     });
 
     this.room.state.players.onRemove((player: PlayerState, sessionId: string) => {
