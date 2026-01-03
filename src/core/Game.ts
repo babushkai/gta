@@ -89,19 +89,24 @@ export class Game extends EventEmitter {
   }
 
   private createDefaultConfig(): GameConfig {
+    // Detect mobile for performance optimization
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+                     ('ontouchstart' in window) ||
+                     window.innerWidth < 768;
+
     return {
       debug: false,
       graphics: {
-        antialias: true,
-        shadows: true,
-        shadowMapSize: 2048,
-        postProcessing: true,
-        bloom: true,
-        ssao: true,
+        antialias: !isMobile, // Disable on mobile
+        shadows: !isMobile, // Disable shadows on mobile
+        shadowMapSize: isMobile ? 512 : 2048,
+        postProcessing: !isMobile, // Disable post-processing on mobile
+        bloom: !isMobile,
+        ssao: false, // Disable SSAO everywhere (expensive)
         dof: false,
-        motionBlur: true,
+        motionBlur: false, // Disable motion blur
         fov: 75,
-        drawDistance: 1000
+        drawDistance: isMobile ? 300 : 1000 // Reduce draw distance on mobile
       },
       audio: {
         masterVolume: 1.0,
@@ -111,13 +116,13 @@ export class Game extends EventEmitter {
       },
       physics: {
         gravity: -30,
-        substeps: 5,
+        substeps: isMobile ? 3 : 5, // Fewer physics substeps on mobile
         friction: 0.5,
         restitution: 0.3
       },
       gameplay: {
         difficulty: 'normal',
-        autoAim: false,
+        autoAim: isMobile, // Enable auto-aim on mobile
         invertY: false,
         mouseSensitivity: 0.5
       }

@@ -46,7 +46,7 @@ export class InputManager extends EventEmitter {
     this.keyMap.set('KeyS', 'backward');
     this.keyMap.set('KeyA', 'left');
     this.keyMap.set('KeyD', 'right');
-    this.keyMap.set('Space', 'jump');
+    this.keyMap.set('Space', 'jump'); // Also used as handbrake in vehicles
     this.keyMap.set('ShiftLeft', 'sprint');
     this.keyMap.set('ControlLeft', 'crouch');
     this.keyMap.set('KeyR', 'reload');
@@ -54,7 +54,6 @@ export class InputManager extends EventEmitter {
     this.keyMap.set('KeyF', 'enterVehicle');
     this.keyMap.set('KeyH', 'horn');
     this.keyMap.set('KeyL', 'headlights');
-    this.keyMap.set('Space', 'handbrake');
     this.keyMap.set('Tab', 'nextWeapon');
     this.keyMap.set('KeyQ', 'prevWeapon');
     this.keyMap.set('KeyN', 'nextRadio');
