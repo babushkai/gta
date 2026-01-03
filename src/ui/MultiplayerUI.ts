@@ -21,7 +21,8 @@ export class MultiplayerUI {
   initialize(): void {
     this.createUI();
     this.setupEventListeners();
-    this.checkURLForRoom();
+    // Connection is now handled by main.ts, not URL params
+    // this.checkURLForRoom();
   }
 
   private createUI(): void {

@@ -116,7 +116,7 @@ export class NetworkManager extends EventEmitter {
     this.config = { ...this.config, ...config };
   }
 
-  async connect(serverUrl?: string, roomId?: string): Promise<boolean> {
+  async connect(serverUrl?: string, _roomId?: string): Promise<boolean> {
     if (this.isConnected) {
       console.warn('Already connected to server');
       return true;
@@ -128,16 +128,11 @@ export class NetworkManager extends EventEmitter {
       console.log(`Connecting to multiplayer server: ${url}`);
       this.client = new Client(url);
 
-      // Join or create room
-      if (roomId) {
-        this.room = await this.client.joinById<GameState>(roomId, {
-          name: this.config.playerName,
-        });
-      } else {
-        this.room = await this.client.joinOrCreate<GameState>('game', {
-          name: this.config.playerName,
-        });
-      }
+      // Always use joinOrCreate to put everyone in the same room
+      // Ignore roomId parameter to avoid stale room issues
+      this.room = await this.client.joinOrCreate<GameState>('game', {
+        name: this.config.playerName,
+      });
 
       this.isConnected = true;
       this.reconnectAttempts = 0;
