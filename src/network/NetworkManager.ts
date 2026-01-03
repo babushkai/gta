@@ -162,6 +162,23 @@ export class NetworkManager extends EventEmitter {
       this.updateUI('Connected', this.room.roomId, 1);
       this.emit('connected', { roomId: this.room.roomId });
 
+      // Fallback: Check for existing players after a short delay
+      // This handles cases where onAdd callbacks don't fire for existing players
+      setTimeout(() => {
+        if (this.room?.state.players) {
+          const existingPlayers = this.room.state.players;
+          console.log(`🔄 Fallback check: ${existingPlayers.size} players in room`);
+          existingPlayers.forEach((player, sessionId) => {
+            if (sessionId !== this.localPlayerId && !this.remotePlayers.has(sessionId)) {
+              console.log(`🔄 Creating remote player for ${sessionId} (${player.name}) via fallback`);
+              const remotePlayer = new RemotePlayer(this.game, player);
+              this.remotePlayers.set(sessionId, remotePlayer);
+            }
+          });
+          this.updateUI('Connected', this.room.roomId, existingPlayers.size);
+        }
+      }, 1000);
+
       return true;
     } catch (error) {
       console.error('Failed to connect to server:', error);
@@ -189,10 +206,23 @@ export class NetworkManager extends EventEmitter {
   private setupRoomHandlers() {
     if (!this.room) return;
 
+    // Debug: Log when state changes
+    this.room.onStateChange((state) => {
+      console.log(`📡 State changed! Players in state: ${state.players.size}`);
+    });
+
     // Handle welcome message
     this.room.onMessage('welcome', (message: { playerId: string; roomId: string }) => {
       this.localPlayerId = message.playerId;
       console.log(`Joined as player: ${this.localPlayerId}`);
+
+      // After getting welcome, check existing players
+      if (this.room?.state.players) {
+        console.log(`📋 Existing players in room: ${this.room.state.players.size}`);
+        this.room.state.players.forEach((p, id) => {
+          console.log(`   - ${id}: ${p.name}`);
+        });
+      }
     });
 
     // Handle player state changes
