@@ -60,7 +60,10 @@ export class GameRoom extends Room<GameState> {
   private tickRate = 20; // 20 Hz server tick
 
   onCreate(options: any) {
-    console.log('GameRoom created!', options);
+    console.log(`\n╔══════════════════════════════════════════════════╗`);
+    console.log(`║  🏠 NEW ROOM CREATED: ${this.roomId}              `);
+    console.log(`║  Options: ${JSON.stringify(options)}`);
+    console.log(`╚══════════════════════════════════════════════════╝\n`);
 
     this.setState(new GameState());
     this.state.roomId = this.roomId;
@@ -121,7 +124,10 @@ export class GameRoom extends Room<GameState> {
   }
 
   onJoin(client: Client, options: any) {
-    console.log(`Player ${client.sessionId} joined!`);
+    console.log(`\n========================================`);
+    console.log(`🎮 Player ${client.sessionId} joining room ${this.roomId}`);
+    console.log(`   Name: ${options.name || 'unknown'}`);
+    console.log(`   Current players before join: ${this.state.players.size}`);
 
     // Create player state
     const player = new PlayerState();
@@ -137,6 +143,13 @@ export class GameRoom extends Room<GameState> {
     player.z = spawn.z;
 
     this.state.players.set(client.sessionId, player);
+
+    console.log(`   Players after join: ${this.state.players.size}`);
+    console.log(`   All players in room:`);
+    this.state.players.forEach((p, id) => {
+      console.log(`      - ${id}: ${p.name}`);
+    });
+    console.log(`========================================\n`);
 
     // Send welcome message with room info
     client.send('welcome', {

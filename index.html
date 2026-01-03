@@ -486,6 +486,37 @@
       border-radius: 3px;
       margin: 0 2px;
     }
+
+    #multiplayer-info {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    #mp-status {
+      color: #ffcc00;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    #mp-status.connected {
+      color: #44ff44;
+    }
+
+    #mp-status.disconnected {
+      color: #ff4444;
+    }
+
+    #mp-room, #mp-players {
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.7);
+    }
   </style>
 </head>
 <body>
@@ -578,6 +609,12 @@
         <span class="key">TAB</span> Weapons
         <span class="key">R</span> Radio
         <span class="key">ESC</span> Pause
+      </div>
+
+      <div id="multiplayer-info">
+        <div id="mp-status">Connecting...</div>
+        <div id="mp-room">Room: ---</div>
+        <div id="mp-players">Players: 0</div>
       </div>
     </div>
 

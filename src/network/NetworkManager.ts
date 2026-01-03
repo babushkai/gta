@@ -110,6 +110,25 @@ export class NetworkManager extends EventEmitter {
       playerName: 'Player',
       autoConnect: false,
     };
+
+    this.updateUI('Connecting...', '---', 0);
+  }
+
+  private updateUI(status: string, roomId: string, playerCount: number) {
+    const statusEl = document.getElementById('mp-status');
+    const roomEl = document.getElementById('mp-room');
+    const playersEl = document.getElementById('mp-players');
+
+    if (statusEl) {
+      statusEl.textContent = status;
+      statusEl.className = this.isConnected ? 'connected' : (status === 'Connecting...' ? '' : 'disconnected');
+    }
+    if (roomEl) {
+      roomEl.textContent = `Room: ${roomId}`;
+    }
+    if (playersEl) {
+      playersEl.textContent = `Players: ${playerCount}`;
+    }
   }
 
   setConfig(config: Partial<MultiplayerConfig>) {
@@ -140,11 +159,13 @@ export class NetworkManager extends EventEmitter {
       this.setupRoomHandlers();
 
       console.log(`Connected to room: ${this.room.roomId}`);
+      this.updateUI('Connected', this.room.roomId, 1);
       this.emit('connected', { roomId: this.room.roomId });
 
       return true;
     } catch (error) {
       console.error('Failed to connect to server:', error);
+      this.updateUI('Failed', '---', 0);
       this.emit('connectionError', { error });
       return false;
     }
@@ -161,6 +182,7 @@ export class NetworkManager extends EventEmitter {
     this.isConnected = false;
     this.remotePlayers.forEach((player) => player.dispose());
     this.remotePlayers.clear();
+    this.updateUI('Disconnected', '---', 0);
     this.emit('disconnected', {});
   }
 
@@ -175,7 +197,9 @@ export class NetworkManager extends EventEmitter {
 
     // Handle player state changes
     this.room.state.players.onAdd((player: PlayerState, sessionId: string) => {
-      console.log(`🎮 Player added: ${sessionId}, name: ${player.name}, localId: ${this.localPlayerId}`);
+      const totalPlayers = this.room?.state.players.size || 1;
+      console.log(`🎮 Player added: ${sessionId}, name: ${player.name}, localId: ${this.localPlayerId}, total: ${totalPlayers}`);
+      this.updateUI('Connected', this.room?.roomId || '---', totalPlayers);
 
       // Don't create remote player for local player
       if (sessionId === this.localPlayerId) {
@@ -190,8 +214,10 @@ export class NetworkManager extends EventEmitter {
       console.log(`  → Total remote players: ${this.remotePlayers.size}`);
     });
 
-    this.room.state.players.onRemove((player: PlayerState, sessionId: string) => {
+    this.room.state.players.onRemove((_player: PlayerState, sessionId: string) => {
       console.log(`Player removed: ${sessionId}`);
+      const totalPlayers = this.room?.state.players.size || 1;
+      this.updateUI('Connected', this.room?.roomId || '---', totalPlayers);
 
       const remotePlayer = this.remotePlayers.get(sessionId);
       if (remotePlayer) {
