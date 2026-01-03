@@ -81,13 +81,19 @@ export class InputManager extends EventEmitter {
     document.addEventListener('wheel', this.boundHandleWheel);
     document.addEventListener('pointerlockchange', this.boundHandlePointerLockChange);
 
-    // Show click instruction
-    this.showClickInstruction();
+    // Auto-request pointer lock on desktop (skip on mobile)
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || ('ontouchstart' in window);
+
+    if (!isMobile) {
+      // Request pointer lock after a short delay to ensure canvas is ready
+      setTimeout(() => {
+        canvas.requestPointerLock();
+      }, 100);
+    }
 
     canvas.addEventListener('click', () => {
-      if (!this.isPointerLocked) {
+      if (!this.isPointerLocked && !isMobile) {
         canvas.requestPointerLock();
-        this.hideClickInstruction();
       }
     });
 
@@ -102,39 +108,6 @@ export class InputManager extends EventEmitter {
   private boundHandleMouseMove: ((e: MouseEvent) => void) | null = null;
   private boundHandleWheel: ((e: WheelEvent) => void) | null = null;
   private boundHandlePointerLockChange: (() => void) | null = null;
-  private clickInstruction: HTMLElement | null = null;
-
-  private showClickInstruction(): void {
-    this.clickInstruction = document.createElement('div');
-    this.clickInstruction.id = 'click-instruction';
-    this.clickInstruction.innerHTML = `
-      <div style="
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 30px 50px;
-        border-radius: 10px;
-        text-align: center;
-        z-index: 1000;
-        font-family: sans-serif;
-        border: 2px solid #e94560;
-      ">
-        <div style="font-size: 24px; margin-bottom: 10px;">🎮 Click to Play</div>
-        <div style="font-size: 14px; opacity: 0.7;">Click anywhere to start controlling the game</div>
-      </div>
-    `;
-    document.body.appendChild(this.clickInstruction);
-  }
-
-  private hideClickInstruction(): void {
-    if (this.clickInstruction) {
-      this.clickInstruction.remove();
-      this.clickInstruction = null;
-    }
-  }
 
   private handleKeyDown(event: KeyboardEvent): void {
     const action = this.keyMap.get(event.code);
@@ -239,7 +212,6 @@ export class InputManager extends EventEmitter {
     if (this.boundHandleMouseMove) document.removeEventListener('mousemove', this.boundHandleMouseMove);
     if (this.boundHandleWheel) document.removeEventListener('wheel', this.boundHandleWheel);
     if (this.boundHandlePointerLockChange) document.removeEventListener('pointerlockchange', this.boundHandlePointerLockChange);
-    this.hideClickInstruction();
     this.removeAllListeners();
   }
 }
