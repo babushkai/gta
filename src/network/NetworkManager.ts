@@ -98,8 +98,11 @@ export class NetworkManager extends EventEmitter {
     // Slower sync on mobile (10 Hz vs 20 Hz)
     this.positionSendInterval = isMobile ? 100 : 50;
 
-    // Use environment variable for server URL, fallback to localhost for development
-    const defaultServerUrl = import.meta.env.VITE_SERVER_URL || 'ws://localhost:2567';
+    // Use environment variable for server URL, fallback to production server
+    const defaultServerUrl = import.meta.env.VITE_SERVER_URL ||
+      (window.location.hostname === 'localhost'
+        ? 'ws://localhost:2567'
+        : 'wss://gta-multiplayer-server.onrender.com');
 
     this.config = {
       enabled: false,
