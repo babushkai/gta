@@ -21,14 +21,23 @@ interface StreetLight {
   position: THREE.Vector3;
 }
 
-// NYC Color palettes
+// NYC Color palettes - more weathered, gritty colors
 const NYC_PALETTES = {
-  brownstone: [0x8B4513, 0xA0522D, 0x6B3E26, 0x7D4427, 0x5C3317],
-  artdeco: [0xD4C4A8, 0xC9B896, 0xB8A88A, 0x9C8C70, 0x8B7355],
-  prewar: [0xCD853F, 0xDEB887, 0xD2B48C, 0xC4A35A, 0xB8860B],
-  modern: [0x4A4A4A, 0x5A5A5A, 0x6A6A6A, 0x3A3A3A, 0x2A2A2A],
+  brownstone: [0x7A3D10, 0x8E4A25, 0x5B3520, 0x6D3C22, 0x4C2B15], // Darker, weathered brown
+  artdeco: [0xC4B498, 0xB9A886, 0xA8987A, 0x8C7C60, 0x7B6345], // More aged cream/stone
+  prewar: [0xBD7535, 0xCEA877, 0xC2A47C, 0xB4934A, 0xA8760B], // Aged brick/stone
+  modern: [0x3A3A3A, 0x4A4A4A, 0x5A5A5A, 0x2A2A2A, 0x1A1A1A], // Darker concrete
   glass_tower: [0x1E3A5F, 0x2E4A6F, 0x3E5A7F, 0x4E6A8F, 0x1E2A4F],
-  warehouse: [0x8B0000, 0xA52A2A, 0xB22222, 0xCD5C5C, 0x800000]
+  warehouse: [0x6B0000, 0x852222, 0x921A1A, 0xAD4C4C, 0x600000] // Aged brick red
+};
+
+// NYC grime/weathering colors
+const NYC_GRIME = {
+  waterStain: 0x3A3A3A,
+  soot: 0x1A1A1A,
+  rust: 0x8B4513,
+  mold: 0x2F4F2F,
+  graffiti: [0xFF1493, 0x00FF00, 0xFF6600, 0x00FFFF, 0xFFFF00, 0x9400D3]
 };
 
 export class World {
@@ -409,6 +418,142 @@ export class World {
     this.createSubwayEntrance(120, 90);
     this.createSubwayEntrance(-120, -90);
     this.createSubwayEntrance(60, 180);
+
+    // Add NYC street details
+    this.createStreetFurniture();
+    this.createScaffolding();
+  }
+
+  // NYC street furniture - trash cans, newspaper boxes, mailboxes
+  private createStreetFurniture(): void {
+    const trashCanMat = new THREE.MeshStandardMaterial({ color: 0x2A5A2A, roughness: 0.7 });
+    const mailboxMat = new THREE.MeshStandardMaterial({ color: 0x1E3D59, roughness: 0.5, metalness: 0.3 });
+    const newsPaperMat = new THREE.MeshStandardMaterial({ color: 0xFFD700, roughness: 0.4, metalness: 0.3 });
+
+    // Place furniture at intersections
+    for (let x = -4; x <= 4; x++) {
+      for (let z = -5; z <= 5; z++) {
+        const baseX = x * 60;
+        const baseZ = z * 45;
+
+        // NYC green trash can
+        if (Math.random() > 0.4) {
+          const trashCan = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.35, 1, 12), trashCanMat);
+          trashCan.position.set(baseX + 8, 0.5, baseZ + 6);
+          trashCan.castShadow = true;
+          this.game.scene.add(trashCan);
+
+          // Trash spilling out
+          if (Math.random() > 0.6) {
+            const trashMat = new THREE.MeshBasicMaterial({ color: 0x8B7355 });
+            for (let i = 0; i < 3; i++) {
+              const trash = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.2), trashMat);
+              trash.position.set(
+                baseX + 8 + (Math.random() - 0.5) * 1.5,
+                0.05,
+                baseZ + 6 + (Math.random() - 0.5) * 1.5
+              );
+              trash.rotation.y = Math.random() * Math.PI;
+              this.game.scene.add(trash);
+            }
+          }
+        }
+
+        // Blue USPS mailbox
+        if (Math.random() > 0.85) {
+          const mailbox = new THREE.Group();
+          const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 0.5), mailboxMat);
+          body.position.y = 0.6;
+          mailbox.add(body);
+          const top = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.15, 0.55), mailboxMat);
+          top.position.y = 1.25;
+          mailbox.add(top);
+          mailbox.position.set(baseX - 8, 0, baseZ + 7);
+          mailbox.castShadow = true;
+          this.game.scene.add(mailbox);
+        }
+
+        // Newspaper box
+        if (Math.random() > 0.8) {
+          const newsBox = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.1, 0.4), newsPaperMat);
+          newsBox.position.set(baseX + 9, 0.55, baseZ - 6);
+          newsBox.castShadow = true;
+          this.game.scene.add(newsBox);
+        }
+      }
+    }
+
+    // Add some scattered garbage bags
+    const garbageMat = new THREE.MeshStandardMaterial({ color: 0x1A1A1A, roughness: 0.9 });
+    for (let i = 0; i < 30; i++) {
+      const bag = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 4), garbageMat);
+      bag.scale.set(1, 0.7, 1.2);
+      bag.position.set(
+        (Math.random() - 0.5) * 400,
+        0.25,
+        (Math.random() - 0.5) * 400
+      );
+      this.game.scene.add(bag);
+    }
+  }
+
+  // Construction scaffolding on some buildings
+  private createScaffolding(): void {
+    const scaffoldMat = new THREE.MeshStandardMaterial({ color: 0x4A4A4A, metalness: 0.6, roughness: 0.5 });
+    const plywoodMat = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.9 });
+
+    // Add scaffolding to a few random locations
+    const scaffoldLocations = [
+      { x: 30, z: 60, width: 15, height: 20 },
+      { x: -90, z: -30, width: 12, height: 25 },
+      { x: 120, z: 45, width: 18, height: 15 },
+      { x: -45, z: 90, width: 10, height: 18 },
+    ];
+
+    scaffoldLocations.forEach(loc => {
+      const scaffoldGroup = new THREE.Group();
+
+      // Vertical poles
+      for (let i = 0; i <= Math.floor(loc.width / 3); i++) {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, loc.height, 8), scaffoldMat);
+        pole.position.set(i * 3, loc.height / 2, 0);
+        scaffoldGroup.add(pole);
+
+        const pole2 = pole.clone();
+        pole2.position.z = 1.5;
+        scaffoldGroup.add(pole2);
+      }
+
+      // Horizontal bars and platforms
+      for (let level = 0; level < Math.floor(loc.height / 3); level++) {
+        // Platform
+        const platform = new THREE.Mesh(new THREE.BoxGeometry(loc.width, 0.15, 1.5), plywoodMat);
+        platform.position.set(loc.width / 2, level * 3 + 2, 0.75);
+        scaffoldGroup.add(platform);
+
+        // Cross braces
+        for (let i = 0; i < Math.floor(loc.width / 3); i++) {
+          const brace = new THREE.Mesh(new THREE.BoxGeometry(0.03, 3.5, 0.03), scaffoldMat);
+          brace.rotation.z = Math.PI / 6;
+          brace.position.set(i * 3 + 1.5, level * 3 + 0.5, 0);
+          scaffoldGroup.add(brace);
+        }
+      }
+
+      // Green safety netting
+      const netMat = new THREE.MeshBasicMaterial({
+        color: 0x228B22,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide
+      });
+      const net = new THREE.Mesh(new THREE.PlaneGeometry(loc.width, loc.height), netMat);
+      net.position.set(loc.width / 2, loc.height / 2, -0.1);
+      scaffoldGroup.add(net);
+
+      scaffoldGroup.position.set(loc.x, 0, loc.z);
+      this.game.scene.add(scaffoldGroup);
+    });
   }
 
   private createSidewalkTexture(): THREE.CanvasTexture {
@@ -827,14 +972,22 @@ export class World {
     body.receiveShadow = true;
     group.add(body);
 
-    // Stoop (front steps)
-    const stoopMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
+    // Stoop (front steps) - weathered concrete
+    const stoopMaterial = new THREE.MeshStandardMaterial({ color: 0x707070, roughness: 0.9 });
     const stoop = new THREE.Mesh(new THREE.BoxGeometry(width * 0.4, height * 0.15, 3), stoopMaterial);
     stoop.position.set(0, -height * 0.42, depth / 2 + 1.5);
     group.add(stoop);
 
+    // Iron railing on stoop (NYC classic)
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x1A1A1A, metalness: 0.8, roughness: 0.4 });
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 2.5), railMat);
+      rail.position.set(side * (width * 0.18), -height * 0.35, depth / 2 + 1.5);
+      group.add(rail);
+    }
+
     // Cornice at top
-    const corniceMaterial = new THREE.MeshStandardMaterial({ color: 0x654321, roughness: 0.7 });
+    const corniceMaterial = new THREE.MeshStandardMaterial({ color: 0x554321, roughness: 0.7 });
     const cornice = new THREE.Mesh(new THREE.BoxGeometry(width + 0.4, 0.5, depth + 0.2), corniceMaterial);
     cornice.position.y = height / 2 + 0.25;
     group.add(cornice);
@@ -847,10 +1000,16 @@ export class World {
     // Windows with brownstone frames
     this.addBrownstoneWindows(group, width, height, depth);
 
-    // Fire escape on side
-    if (Math.random() > 0.3) {
+    // Fire escape on side (very common in NYC)
+    if (Math.random() > 0.2) {
       this.addFireEscape(group, width, height, depth);
     }
+
+    // AC units in windows
+    this.addWindowACUnits(group, width, height, depth);
+
+    // Weathering stains
+    this.addWeatheringStains(group, width, height, depth);
   }
 
   // Art Deco - Empire State / Chrysler style
@@ -915,14 +1074,14 @@ export class World {
     body.receiveShadow = true;
     group.add(body);
 
-    // Ornate cornice
-    const corniceMaterial = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.6 });
+    // Ornate cornice (darker, aged)
+    const corniceMaterial = new THREE.MeshStandardMaterial({ color: 0x6B5335, roughness: 0.7 });
     const cornice = new THREE.Mesh(new THREE.BoxGeometry(width + 0.8, 1.2, depth + 0.8), corniceMaterial);
     cornice.position.y = height / 2 + 0.6;
     group.add(cornice);
 
-    // Base with rustication
-    const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x696969, roughness: 0.85 });
+    // Base with rustication (weathered)
+    const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x595959, roughness: 0.9 });
     const base = new THREE.Mesh(new THREE.BoxGeometry(width + 0.3, height * 0.15, depth + 0.3), baseMaterial);
     base.position.y = -height * 0.42;
     group.add(base);
@@ -930,14 +1089,25 @@ export class World {
     // Regular windows
     this.addPrewarWindows(group, width, height, depth);
 
-    // Fire escape
-    if (Math.random() > 0.4) {
+    // Fire escape (very common on prewar buildings)
+    if (Math.random() > 0.25) {
       this.addFireEscape(group, width, height, depth);
     }
 
-    // Water tank on roof
-    if (height > 30 && Math.random() > 0.5) {
+    // Water tank on roof (iconic NYC)
+    if (height > 25 && Math.random() > 0.4) {
       this.addWaterTank(group, width, height, depth);
+    }
+
+    // AC units
+    this.addWindowACUnits(group, width, height, depth);
+
+    // Weathering stains
+    this.addWeatheringStains(group, width, height, depth);
+
+    // Storefront awning on ground floor
+    if (Math.random() > 0.5) {
+      this.addStorefrontAwning(group, width, height, depth);
     }
   }
 
@@ -1016,8 +1186,8 @@ export class World {
   private createWarehouse(group: THREE.Group, width: number, height: number, depth: number, color: number): void {
     const brickMaterial = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.9,
-      metalness: 0.05
+      roughness: 0.95,
+      metalness: 0.02
     });
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), brickMaterial);
@@ -1025,22 +1195,30 @@ export class World {
     body.receiveShadow = true;
     group.add(body);
 
-    // Large industrial windows
+    // Large industrial windows (some broken/boarded)
     const windowMaterial = new THREE.MeshStandardMaterial({
       color: 0x1A2A3A,
       roughness: 0.2,
       metalness: 0.3,
       transparent: true,
-      opacity: 0.6
+      opacity: 0.5
     });
 
-    // Big arched windows
+    const boardedMaterial = new THREE.MeshStandardMaterial({
+      color: 0x4A3A2A,
+      roughness: 0.9
+    });
+
+    // Big industrial windows
     const windowRows = Math.floor(height / 5);
     const windowCols = Math.floor(width / 6);
 
     for (let row = 0; row < windowRows; row++) {
       for (let col = 0; col < windowCols; col++) {
-        const windowMesh = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 0.1), windowMaterial);
+        // Some windows are boarded up
+        const isBoarded = Math.random() > 0.75;
+        const mat = isBoarded ? boardedMaterial : windowMaterial;
+        const windowMesh = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 0.1), mat);
         windowMesh.position.set(
           -width / 2 + 3 + col * 6,
           -height / 2 + 2.5 + row * 5,
@@ -1050,19 +1228,49 @@ export class World {
       }
     }
 
-    // Smokestack
-    if (Math.random() > 0.5) {
-      const stackMaterial = new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.7 });
+    // Smokestack (rusted)
+    if (Math.random() > 0.4) {
+      const stackMaterial = new THREE.MeshStandardMaterial({ color: 0x5A4A3A, roughness: 0.8 });
       const stack = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.2, 15, 12), stackMaterial);
       stack.position.set(width * 0.3, height / 2 + 7.5, 0);
       group.add(stack);
+
+      // Rust stains on smokestack
+      const rustMat = new THREE.MeshBasicMaterial({ color: NYC_GRIME.rust, transparent: true, opacity: 0.4 });
+      const rust = new THREE.Mesh(new THREE.PlaneGeometry(2, 8), rustMat);
+      rust.position.set(width * 0.3 + 1.05, height / 2 + 4, 0);
+      rust.rotation.y = Math.PI / 2;
+      group.add(rust);
     }
 
-    // Loading dock
-    const dockMaterial = new THREE.MeshStandardMaterial({ color: 0x3A3A3A, roughness: 0.8 });
+    // Loading dock (weathered concrete)
+    const dockMaterial = new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.9 });
     const dock = new THREE.Mesh(new THREE.BoxGeometry(width * 0.6, 1.5, 3), dockMaterial);
     dock.position.set(0, -height / 2 + 0.75, depth / 2 + 1.5);
     group.add(dock);
+
+    // Roll-up doors on loading dock
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x3A3A3A, metalness: 0.5, roughness: 0.6 });
+    const numDoors = Math.floor(width / 8);
+    for (let i = 0; i < numDoors; i++) {
+      const door = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 0.1), doorMat);
+      door.position.set(-width / 4 + i * 8, -height / 2 + 3.5, depth / 2 + 0.05);
+      group.add(door);
+    }
+
+    // Graffiti (very common on warehouses)
+    this.addGraffiti(group, width, height, depth);
+
+    // Weathering stains
+    this.addWeatheringStains(group, width, height, depth);
+
+    // Dumpster near loading dock
+    if (Math.random() > 0.5) {
+      const dumpsterMat = new THREE.MeshStandardMaterial({ color: 0x2A5A2A, roughness: 0.7 });
+      const dumpster = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 2), dumpsterMat);
+      dumpster.position.set(width / 2 - 2, -height / 2 + 0.75, depth / 2 + 3);
+      group.add(dumpster);
+    }
   }
 
   // Window creation methods for different styles
@@ -1256,6 +1464,158 @@ export class World {
     const penthouse = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 4), mechMaterial);
     penthouse.position.set(0, height / 2 + 1.5, -depth / 4);
     group.add(penthouse);
+
+    // Satellite dishes and antennas
+    if (Math.random() > 0.5) {
+      const dishMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.6 });
+      const dish = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), dishMat);
+      dish.rotation.x = -Math.PI / 4;
+      dish.position.set(width * 0.3, height / 2 + 1, depth * 0.2);
+      group.add(dish);
+    }
+
+    // Antenna poles
+    for (let i = 0; i < 2; i++) {
+      if (Math.random() > 0.6) {
+        const antennaMat = new THREE.MeshStandardMaterial({ color: 0x4A4A4A, metalness: 0.8 });
+        const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 4, 6), antennaMat);
+        antenna.position.set(
+          (Math.random() - 0.5) * width * 0.6,
+          height / 2 + 2,
+          (Math.random() - 0.5) * depth * 0.6
+        );
+        group.add(antenna);
+      }
+    }
+  }
+
+  // NYC Window AC units - iconic summer sight
+  private addWindowACUnits(group: THREE.Group, width: number, height: number, depth: number): void {
+    const acMaterial = new THREE.MeshStandardMaterial({ color: 0x8A8A8A, roughness: 0.5, metalness: 0.3 });
+    const grillMaterial = new THREE.MeshStandardMaterial({ color: 0x3A3A3A, roughness: 0.8 });
+
+    const floors = Math.floor(height / 4);
+    const windowsPerFloor = Math.floor(width / 3);
+
+    for (let floor = 0; floor < floors; floor++) {
+      for (let i = 0; i < windowsPerFloor; i++) {
+        // Random chance for AC unit (more common on lower floors)
+        if (Math.random() > 0.6 + floor * 0.05) {
+          const acBox = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.6), acMaterial);
+          acBox.position.set(
+            -width / 2 + 1.5 + i * 3,
+            -height / 2 + 1.5 + floor * 4,
+            depth / 2 + 0.3
+          );
+          group.add(acBox);
+
+          // Grill on front
+          const grill = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.05), grillMaterial);
+          grill.position.set(
+            -width / 2 + 1.5 + i * 3,
+            -height / 2 + 1.5 + floor * 4,
+            depth / 2 + 0.58
+          );
+          group.add(grill);
+        }
+      }
+    }
+  }
+
+  // Graffiti tags on warehouse/industrial buildings
+  private addGraffiti(group: THREE.Group, width: number, height: number, depth: number): void {
+    const graffitiColors = NYC_GRIME.graffiti;
+
+    // Add 2-4 graffiti tags
+    const numTags = 2 + Math.floor(Math.random() * 3);
+
+    for (let i = 0; i < numTags; i++) {
+      const color = graffitiColors[Math.floor(Math.random() * graffitiColors.length)];
+      const tagMaterial = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.8
+      });
+
+      // Random tag shape (abstract blob)
+      const tagWidth = 1 + Math.random() * 2;
+      const tagHeight = 0.5 + Math.random() * 1.5;
+      const tag = new THREE.Mesh(new THREE.PlaneGeometry(tagWidth, tagHeight), tagMaterial);
+
+      // Position on building face (lower area typically)
+      const yPos = -height / 2 + 1 + Math.random() * (height * 0.4);
+      const xPos = (Math.random() - 0.5) * (width - tagWidth);
+
+      tag.position.set(xPos, yPos, depth / 2 + 0.02);
+      group.add(tag);
+    }
+  }
+
+  // Water stains and weathering marks
+  private addWeatheringStains(group: THREE.Group, width: number, height: number, depth: number): void {
+    const stainMaterial = new THREE.MeshBasicMaterial({
+      color: NYC_GRIME.waterStain,
+      transparent: true,
+      opacity: 0.3,
+      depthWrite: false
+    });
+
+    // Vertical water stains running down from roof/windows
+    const numStains = Math.floor(Math.random() * 4) + 1;
+
+    for (let i = 0; i < numStains; i++) {
+      const stainHeight = 3 + Math.random() * 8;
+      const stainWidth = 0.3 + Math.random() * 0.5;
+      const stain = new THREE.Mesh(new THREE.PlaneGeometry(stainWidth, stainHeight), stainMaterial);
+
+      stain.position.set(
+        (Math.random() - 0.5) * (width - 1),
+        height / 2 - stainHeight / 2 - Math.random() * 2,
+        depth / 2 + 0.015
+      );
+      group.add(stain);
+    }
+
+    // Soot stains near bottom
+    const sootMaterial = new THREE.MeshBasicMaterial({
+      color: NYC_GRIME.soot,
+      transparent: true,
+      opacity: 0.25,
+      depthWrite: false
+    });
+    const soot = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.8, 1.5), sootMaterial);
+    soot.position.set(0, -height / 2 + 0.75, depth / 2 + 0.01);
+    group.add(soot);
+  }
+
+  // Awnings over storefronts
+  private addStorefrontAwning(group: THREE.Group, width: number, height: number, depth: number): void {
+    const awningColors = [0xAA0000, 0x006600, 0x000066, 0x8B4513, 0x2F4F4F];
+    const color = awningColors[Math.floor(Math.random() * awningColors.length)];
+
+    const awningMaterial = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.8,
+      side: THREE.DoubleSide
+    });
+
+    // Sloped awning geometry
+    const awningGeom = new THREE.BufferGeometry();
+    const vertices = new Float32Array([
+      // Triangle 1
+      -width/2 + 1, -height/2 + 3.5, depth/2,
+      width/2 - 1, -height/2 + 3.5, depth/2,
+      -width/2 + 1, -height/2 + 2.5, depth/2 + 1.5,
+      // Triangle 2
+      width/2 - 1, -height/2 + 3.5, depth/2,
+      width/2 - 1, -height/2 + 2.5, depth/2 + 1.5,
+      -width/2 + 1, -height/2 + 2.5, depth/2 + 1.5
+    ]);
+    awningGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    awningGeom.computeVertexNormals();
+
+    const awning = new THREE.Mesh(awningGeom, awningMaterial);
+    group.add(awning);
   }
 
   private createStreetLights(): void {

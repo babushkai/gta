@@ -290,8 +290,8 @@ export class WeatherSystem {
     // Shadow camera follows player - covers area around player
     // Increased range for better shadow coverage of tall buildings
     const shadowRange = isMobile ? 80 : 120;
-    this.sun.shadow.camera.near = 0.5;
-    this.sun.shadow.camera.far = 400;
+    this.sun.shadow.camera.near = 1;
+    this.sun.shadow.camera.far = 300; // Keep well below skybox (500)
     this.sun.shadow.camera.left = -shadowRange;
     this.sun.shadow.camera.right = shadowRange;
     this.sun.shadow.camera.top = shadowRange;
@@ -426,6 +426,10 @@ export class WeatherSystem {
     });
 
     this.skybox = new THREE.Mesh(skyGeometry, skyMaterial);
+    this.skybox.receiveShadow = false;
+    this.skybox.castShadow = false;
+    this.skybox.renderOrder = -1000; // Render skybox first (background)
+    this.skybox.frustumCulled = false; // Always render skybox
     this.game.scene.add(this.skybox);
   }
 
