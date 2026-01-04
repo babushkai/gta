@@ -310,6 +310,8 @@ export interface RadioStation {
   currentTrackIndex: number;
   djName?: string;
   icon: string;
+  streamUrl?: string; // URL for live internet radio stream
+  isLiveStream?: boolean; // True if this is a live streaming station (won't cycle tracks)
 }
 
 export interface RadioTrack {
