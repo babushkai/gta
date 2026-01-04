@@ -9,22 +9,7 @@ async function startGame(playerName: string): Promise<void> {
     game = Game.getInstance();
     await game.initialize();
 
-    // Set player name in network manager and connect to multiplayer
-    if (game.network) {
-      game.network.setConfig({ playerName, enabled: true, autoConnect: true });
-      try {
-        const connected = await game.network.connect();
-        if (connected) {
-          console.log('✅ Connected to multiplayer server!');
-        } else {
-          console.warn('⚠️ Could not connect to multiplayer server');
-        }
-      } catch (err) {
-        console.error('❌ Multiplayer connection error:', err);
-      }
-    }
-
-    // Hide start screen
+    // Hide start screen IMMEDIATELY (don't wait for multiplayer)
     const startScreen = document.getElementById('start-screen');
     if (startScreen) {
       startScreen.classList.add('hidden');
@@ -35,6 +20,21 @@ async function startGame(playerName: string): Promise<void> {
 
     console.log('✅ Game started!');
     (window as unknown as { game: Game }).game = game;
+
+    // Connect to multiplayer in the BACKGROUND (non-blocking)
+    if (game.network) {
+      game.network.setConfig({ playerName, enabled: true, autoConnect: true });
+      // Don't await - let it connect in background
+      game.network.connect().then(connected => {
+        if (connected) {
+          console.log('✅ Connected to multiplayer server!');
+        } else {
+          console.warn('⚠️ Could not connect to multiplayer server');
+        }
+      }).catch(err => {
+        console.error('❌ Multiplayer connection error:', err);
+      });
+    }
 
   } catch (error) {
     console.error('❌ Failed to start game:', error);

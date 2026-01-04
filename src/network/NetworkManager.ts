@@ -145,13 +145,30 @@ export class NetworkManager extends EventEmitter {
 
     try {
       console.log(`Connecting to multiplayer server: ${url}`);
+      this.updateUI('Connecting...', '---', 0);
       this.client = new Client(url);
+
+      // Connection with timeout (server may be waking up on free tier)
+      const connectionTimeout = 30000; // 30 seconds for Render.com cold start
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Connection timeout - server may be starting up')), connectionTimeout);
+      });
+
+      // Show "waking up" message after 5 seconds
+      const wakeupTimer = setTimeout(() => {
+        this.updateUI('Server waking...', '---', 0);
+      }, 5000);
 
       // Always use joinOrCreate to put everyone in the same room
       // Ignore roomId parameter to avoid stale room issues
-      this.room = await this.client.joinOrCreate<GameState>('game', {
-        name: this.config.playerName,
-      });
+      this.room = await Promise.race([
+        this.client.joinOrCreate<GameState>('game', {
+          name: this.config.playerName,
+        }),
+        timeoutPromise
+      ]);
+
+      clearTimeout(wakeupTimer);
 
       this.isConnected = true;
       this.reconnectAttempts = 0;
