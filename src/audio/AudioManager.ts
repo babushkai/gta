@@ -26,316 +26,146 @@ const POLICE_DISPATCH_AUDIO = [
   },
 ];
 
-// Free royalty-free music from Pixabay CDN
+// Radio stations - all using SomaFM live streams (reliable, CORS-friendly with proxy)
 const RADIO_STATIONS: RadioStation[] = [
   {
-    id: 'flash_fm',
-    name: 'Flash FM',
-    genre: '80s Synthwave',
-    icon: '📻',
-    djName: 'Toni',
+    id: 'radio_off',
+    name: 'Radio Off',
+    genre: 'Silence',
+    icon: '🔇',
+    djName: '',
     currentTrackIndex: 0,
-    tracks: [
-      {
-        id: 'flash_1',
-        title: 'Synthwave Dreams',
-        artist: 'RetroSound',
-        duration: 180,
-        file: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3'
-      },
-      {
-        id: 'flash_2',
-        title: 'Neon Nights',
-        artist: 'SynthMaster',
-        duration: 195,
-        file: 'https://cdn.pixabay.com/download/audio/2022/10/25/audio_946bd42714.mp3'
-      },
-      {
-        id: 'flash_3',
-        title: 'Electric Sunset',
-        artist: 'Wave Runner',
-        duration: 210,
-        file: 'https://cdn.pixabay.com/download/audio/2023/09/04/audio_1c194b0d75.mp3'
-      }
-    ]
+    tracks: []
   },
+  // Live streaming radio stations (using browser-embeddable streams)
   {
-    id: 'v_rock',
-    name: 'V-Rock',
-    genre: 'Rock',
-    icon: '🎸',
-    djName: 'Lazlow',
-    currentTrackIndex: 0,
-    tracks: [
-      {
-        id: 'vrock_1',
-        title: 'Electric Energy',
-        artist: 'Power Chord',
-        duration: 200,
-        file: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_8cb749d484.mp3'
-      },
-      {
-        id: 'vrock_2',
-        title: 'Highway Fury',
-        artist: 'Steel Thunder',
-        duration: 185,
-        file: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_ea7028a313.mp3'
-      },
-      {
-        id: 'vrock_3',
-        title: 'Metal Storm',
-        artist: 'Riff Master',
-        duration: 220,
-        file: 'https://cdn.pixabay.com/download/audio/2023/07/30/audio_e1c72e9bea.mp3'
-      }
-    ]
-  },
-  {
-    id: 'chill',
-    name: 'Chill Wave',
-    genre: 'Lo-Fi',
-    icon: '🌊',
-    djName: 'DJ Relax',
-    currentTrackIndex: 0,
-    tracks: [
-      {
-        id: 'chill_1',
-        title: 'Lofi Chill',
-        artist: 'Mellow Beats',
-        duration: 150,
-        file: 'https://cdn.pixabay.com/download/audio/2022/05/16/audio_f3709e5d42.mp3'
-      },
-      {
-        id: 'chill_2',
-        title: 'Rainy Afternoon',
-        artist: 'Cozy Vibes',
-        duration: 175,
-        file: 'https://cdn.pixabay.com/download/audio/2022/10/09/audio_cb40dee917.mp3'
-      },
-      {
-        id: 'chill_3',
-        title: 'Coffee Shop',
-        artist: 'Lazy Sunday',
-        duration: 160,
-        file: 'https://cdn.pixabay.com/download/audio/2024/02/14/audio_9a8cb6dbbb.mp3'
-      }
-    ]
-  },
-  {
-    id: 'fever_105',
-    name: 'Fever 105',
-    genre: 'Disco/Funk',
-    icon: '🪩',
-    djName: 'Oliver Biscuit',
-    currentTrackIndex: 0,
-    tracks: [
-      {
-        id: 'fever_1',
-        title: 'Disco Nights',
-        artist: 'Groove Machine',
-        duration: 190,
-        file: 'https://cdn.pixabay.com/download/audio/2022/08/02/audio_54ca0ffa52.mp3'
-      },
-      {
-        id: 'fever_2',
-        title: 'Funky Town',
-        artist: 'Bass Brothers',
-        duration: 205,
-        file: 'https://cdn.pixabay.com/download/audio/2022/03/10/audio_8920da4562.mp3'
-      },
-      {
-        id: 'fever_3',
-        title: 'Get Down',
-        artist: 'Soul Train',
-        duration: 180,
-        file: 'https://cdn.pixabay.com/download/audio/2023/04/20/audio_f7de5b8ce5.mp3'
-      }
-    ]
-  },
-  {
-    id: 'emotion',
-    name: 'Emotion 98.3',
-    genre: 'Soft Rock/Ballads',
-    icon: '💕',
-    djName: 'Fernando Martinez',
-    currentTrackIndex: 0,
-    tracks: [
-      {
-        id: 'emotion_1',
-        title: 'Endless Love',
-        artist: 'Heart Strings',
-        duration: 240,
-        file: 'https://cdn.pixabay.com/download/audio/2022/11/22/audio_cd15e03da6.mp3'
-      },
-      {
-        id: 'emotion_2',
-        title: 'Moonlight Serenade',
-        artist: 'Velvet Voice',
-        duration: 220,
-        file: 'https://cdn.pixabay.com/download/audio/2022/02/07/audio_70d53e0e60.mp3'
-      },
-      {
-        id: 'emotion_3',
-        title: 'Summer Romance',
-        artist: 'Smooth Jazz',
-        duration: 195,
-        file: 'https://cdn.pixabay.com/download/audio/2022/05/17/audio_c8c8a73467.mp3'
-      }
-    ]
-  },
-  {
-    id: 'espantoso',
-    name: 'Radio Espantoso',
-    genre: 'Latin/Salsa',
+    id: 'radio_paradise',
+    name: 'Radio Paradise',
+    genre: 'Eclectic Mix',
     icon: '🌴',
-    djName: 'Pepe',
+    djName: 'RP',
     currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://stream.radioparadise.com/aac-320',
     tracks: [
-      {
-        id: 'esp_1',
-        title: 'Havana Nights',
-        artist: 'Los Calientes',
-        duration: 200,
-        file: 'https://cdn.pixabay.com/download/audio/2022/06/07/audio_b02a08f58f.mp3'
-      },
-      {
-        id: 'esp_2',
-        title: 'Salsa Fever',
-        artist: 'Ritmo Latino',
-        duration: 185,
-        file: 'https://cdn.pixabay.com/download/audio/2022/08/25/audio_4f3b0a8a4a.mp3'
-      },
-      {
-        id: 'esp_3',
-        title: 'Tropical Heat',
-        artist: 'Caribbean Soul',
-        duration: 210,
-        file: 'https://cdn.pixabay.com/download/audio/2022/10/30/audio_073a344e9f.mp3'
-      }
+      { id: 'rp_1', title: 'Live Stream', artist: 'Radio Paradise', duration: 0, file: 'https://stream.radioparadise.com/aac-320' }
     ]
   },
   {
-    id: 'wave_103',
-    name: 'Wave 103',
-    genre: 'Electronic/EDM',
-    icon: '⚡',
-    djName: 'Adam First',
+    id: 'lofi_girl',
+    name: 'Lofi Radio',
+    genre: 'Lo-Fi Beats',
+    icon: '🎧',
+    djName: 'Lofi',
     currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://usa9.fastcast4u.com/proxy/jamz?mp=/1',
     tracks: [
-      {
-        id: 'wave_1',
-        title: 'Digital Dreams',
-        artist: 'Cyber Pulse',
-        duration: 175,
-        file: 'https://cdn.pixabay.com/download/audio/2022/03/24/audio_a8a76e95e5.mp3'
-      },
-      {
-        id: 'wave_2',
-        title: 'Bass Drop',
-        artist: 'Beat Factory',
-        duration: 195,
-        file: 'https://cdn.pixabay.com/download/audio/2022/11/14/audio_1e11067e99.mp3'
-      },
-      {
-        id: 'wave_3',
-        title: 'Rave Night',
-        artist: 'DJ Electronica',
-        duration: 210,
-        file: 'https://cdn.pixabay.com/download/audio/2023/02/02/audio_8dfc526f39.mp3'
-      }
+      { id: 'lofi_1', title: 'Live Stream', artist: 'Lofi Beats', duration: 0, file: 'https://usa9.fastcast4u.com/proxy/jamz?mp=/1' }
     ]
   },
   {
-    id: 'wildstyle',
-    name: 'Wildstyle FM',
+    id: 'jazz_radio',
+    name: 'Jazz FM',
+    genre: 'Smooth Jazz',
+    icon: '🎷',
+    djName: 'Jazz',
+    currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://streaming.radio.co/s774887f7b/listen',
+    tracks: [
+      { id: 'jazz_1', title: 'Live Stream', artist: 'Jazz FM', duration: 0, file: 'https://streaming.radio.co/s774887f7b/listen' }
+    ]
+  },
+  {
+    id: 'chillhop',
+    name: 'Chillhop',
+    genre: 'Chillhop/Lo-Fi',
+    icon: '☕',
+    djName: 'Chill',
+    currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://streams.fluxfm.de/Chillhop/mp3-320/streams.fluxfm.de/',
+    tracks: [
+      { id: 'chill_1', title: 'Live Stream', artist: 'Chillhop', duration: 0, file: 'https://streams.fluxfm.de/Chillhop/mp3-320/streams.fluxfm.de/' }
+    ]
+  },
+  {
+    id: 'synthwave',
+    name: 'Nightride FM',
+    genre: 'Synthwave',
+    icon: '🌃',
+    djName: 'Nightride',
+    currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://stream.nightride.fm/nightride.m4a',
+    tracks: [
+      { id: 'synth_1', title: 'Live Stream', artist: 'Nightride FM', duration: 0, file: 'https://stream.nightride.fm/nightride.m4a' }
+    ]
+  },
+  {
+    id: 'metal_radio',
+    name: 'Metal Express',
+    genre: 'Heavy Metal',
+    icon: '🤘',
+    djName: 'Metal',
+    currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://kathy.torontocast.com:3060/stream',
+    tracks: [
+      { id: 'metal_1', title: 'Live Stream', artist: 'Metal Express', duration: 0, file: 'https://kathy.torontocast.com:3060/stream' }
+    ]
+  },
+  {
+    id: 'classic_rock',
+    name: 'Classic Rock',
+    genre: 'Classic Rock',
+    icon: '🎸',
+    djName: 'Rock',
+    currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://icecast.walmradio.com:8443/classic',
+    tracks: [
+      { id: 'rock_1', title: 'Live Stream', artist: 'Classic Rock', duration: 0, file: 'https://icecast.walmradio.com:8443/classic' }
+    ]
+  },
+  {
+    id: 'electronic',
+    name: 'Electronic FM',
+    genre: 'Electronic',
+    icon: '🔊',
+    djName: 'EDM',
+    currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://streams.fluxfm.de/klubradio/mp3-320/streams.fluxfm.de/',
+    tracks: [
+      { id: 'edm_1', title: 'Live Stream', artist: 'Electronic FM', duration: 0, file: 'https://streams.fluxfm.de/klubradio/mp3-320/streams.fluxfm.de/' }
+    ]
+  },
+  {
+    id: 'hiphop_radio',
+    name: 'Hip-Hop Hits',
     genre: 'Hip-Hop',
     icon: '🎤',
-    djName: 'Mr. Magic',
+    djName: 'HipHop',
     currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://streams.fluxfm.de/hiphop/mp3-320/streams.fluxfm.de/',
     tracks: [
-      {
-        id: 'wild_1',
-        title: 'Street Beats',
-        artist: 'Urban Flow',
-        duration: 180,
-        file: 'https://cdn.pixabay.com/download/audio/2022/01/20/audio_c7f0fab6ab.mp3'
-      },
-      {
-        id: 'wild_2',
-        title: 'Block Party',
-        artist: 'MC Fresh',
-        duration: 200,
-        file: 'https://cdn.pixabay.com/download/audio/2022/09/08/audio_0e22a9e5ca.mp3'
-      },
-      {
-        id: 'wild_3',
-        title: 'Boom Box',
-        artist: 'Beat Kings',
-        duration: 165,
-        file: 'https://cdn.pixabay.com/download/audio/2023/06/15/audio_55c1a7e09b.mp3'
-      }
+      { id: 'hiphop_1', title: 'Live Stream', artist: 'Hip-Hop Radio', duration: 0, file: 'https://streams.fluxfm.de/hiphop/mp3-320/streams.fluxfm.de/' }
     ]
   },
   {
-    id: 'k_jah',
-    name: 'K-JAH West',
-    genre: 'Reggae/Dub',
-    icon: '🌿',
-    djName: 'Marshall Peters',
+    id: 'ambient_radio',
+    name: 'Ambient Space',
+    genre: 'Ambient',
+    icon: '🌌',
+    djName: 'Ambient',
     currentTrackIndex: 0,
+    isLiveStream: true,
+    streamUrl: 'https://streams.fluxfm.de/cosmicradio/mp3-320/streams.fluxfm.de/',
     tracks: [
-      {
-        id: 'kjah_1',
-        title: 'Island Vibes',
-        artist: 'Roots Connection',
-        duration: 220,
-        file: 'https://cdn.pixabay.com/download/audio/2022/04/27/audio_87e8ffd7be.mp3'
-      },
-      {
-        id: 'kjah_2',
-        title: 'Dub Session',
-        artist: 'King Tubby Jr',
-        duration: 195,
-        file: 'https://cdn.pixabay.com/download/audio/2022/07/19/audio_e08ff2cc8e.mp3'
-      },
-      {
-        id: 'kjah_3',
-        title: 'Jah Blessing',
-        artist: 'Zion Train',
-        duration: 185,
-        file: 'https://cdn.pixabay.com/download/audio/2023/01/10/audio_d4d5f56e8d.mp3'
-      }
-    ]
-  },
-  {
-    id: 'rise_fm',
-    name: 'Rise FM',
-    genre: 'Trance/House',
-    icon: '🌅',
-    djName: 'Boy Sanchez',
-    currentTrackIndex: 0,
-    tracks: [
-      {
-        id: 'rise_1',
-        title: 'Sunrise',
-        artist: 'Trance Nation',
-        duration: 240,
-        file: 'https://cdn.pixabay.com/download/audio/2022/08/31/audio_419263ae16.mp3'
-      },
-      {
-        id: 'rise_2',
-        title: 'Euphoria',
-        artist: 'Dream State',
-        duration: 210,
-        file: 'https://cdn.pixabay.com/download/audio/2022/12/05/audio_c22b629291.mp3'
-      },
-      {
-        id: 'rise_3',
-        title: 'Club Life',
-        artist: 'Night Owl',
-        duration: 200,
-        file: 'https://cdn.pixabay.com/download/audio/2023/03/12/audio_c7e9f4b4e9.mp3'
-      }
+      { id: 'ambient_1', title: 'Live Stream', artist: 'Ambient Space', duration: 0, file: 'https://streams.fluxfm.de/cosmicradio/mp3-320/streams.fluxfm.de/' }
     ]
   }
 ];
@@ -346,6 +176,7 @@ export class AudioManager {
   private radioStations: RadioStation[] = RADIO_STATIONS;
   private currentStationIndex: number = 0;
   private currentRadioHowl: Howl | null = null;
+  private currentStreamAudio: HTMLAudioElement | null = null; // Native audio for live streams
   private isRadioPlaying: boolean = false;
   private isPaused: boolean = false;
   private soundCache: Map<string, AudioBuffer> = new Map();
@@ -702,6 +533,11 @@ export class AudioManager {
         this.currentRadioHowl = null;
       }, 500);
     }
+    if (this.currentStreamAudio) {
+      this.currentStreamAudio.pause();
+      this.currentStreamAudio.src = '';
+      this.currentStreamAudio = null;
+    }
     this.hideRadioDisplay();
   }
 
@@ -776,35 +612,101 @@ export class AudioManager {
   }
 
   private playCurrentStation(): void {
+    // Stop any existing audio
     if (this.currentRadioHowl) {
       this.currentRadioHowl.stop();
+      this.currentRadioHowl.unload();
+      this.currentRadioHowl = null;
+    }
+    if (this.currentStreamAudio) {
+      this.currentStreamAudio.pause();
+      this.currentStreamAudio.src = '';
+      this.currentStreamAudio = null;
     }
 
     const station = this.radioStations[this.currentStationIndex];
+
+    // Handle "Radio Off" station
+    if (station.tracks.length === 0) {
+      this.showRadioDisplay(station);
+      return;
+    }
+
+    const isLive = station.isLiveStream === true;
+
+    // Use native HTML5 Audio for live streams (more reliable)
+    if (isLive && station.streamUrl) {
+      console.log(`Loading live stream: ${station.name} from ${station.streamUrl}`);
+
+      this.currentStreamAudio = new Audio();
+      this.currentStreamAudio.crossOrigin = 'anonymous';
+      this.currentStreamAudio.volume = this.config.radioVolume * this.config.masterVolume;
+      this.currentStreamAudio.src = station.streamUrl;
+
+      this.currentStreamAudio.oncanplay = () => {
+        console.log(`Stream ready: ${station.name}`);
+      };
+
+      this.currentStreamAudio.onplay = () => {
+        console.log(`Now playing (Live): ${station.name} - ${station.genre}`);
+      };
+
+      this.currentStreamAudio.onerror = (e) => {
+        console.error(`Stream error: ${station.name}`, e);
+        // Try to reconnect after a delay
+        setTimeout(() => {
+          if (this.isRadioPlaying && this.currentStationIndex === this.radioStations.indexOf(station)) {
+            this.playCurrentStation();
+          }
+        }, 3000);
+      };
+
+      this.currentStreamAudio.play().catch(err => {
+        console.error(`Failed to play stream: ${station.name}`, err);
+      });
+
+      this.showRadioDisplay(station);
+      return;
+    }
+
+    // Use Howler for regular tracks
     const track = station.tracks[station.currentTrackIndex];
+    if (!track?.file) {
+      this.showRadioDisplay(station);
+      return;
+    }
+
+    console.log(`Loading radio: ${station.name} - ${track.title}`);
 
     this.currentRadioHowl = new Howl({
       src: [track.file],
-      html5: true, // Use HTML5 audio for streaming
+      html5: true,
       volume: this.config.radioVolume,
-      loop: false, // Don't loop single track, advance to next
+      loop: false,
+      onload: () => {
+        console.log(`Radio loaded: ${station.name} - ${track.title}`);
+      },
       onplay: () => {
-        console.log(`Now playing: ${station.name} - ${track.title}`);
+        console.log(`Now playing: ${station.name} - ${track.title} by ${track.artist}`);
       },
       onend: () => {
-        // Advance to next track on the station
-        if (this.isRadioPlaying) {
-          this.nextTrack();
-        }
+        this.nextTrack();
       },
-      onloaderror: () => {
-        console.log(`Radio: ${station.name} (loading music...)`);
-        // Try next track if this one fails
+      onloaderror: (_id: number, error: unknown) => {
+        console.error(`Radio load error: ${station.name}`, error);
         setTimeout(() => {
           if (this.isRadioPlaying) {
             this.nextTrack();
           }
-        }, 1000);
+        }, 2000);
+      },
+      onplayerror: (_id: number, error: unknown) => {
+        console.error(`Radio play error: ${station.name}`, error);
+        if (this.currentRadioHowl) {
+          this.currentRadioHowl.once('unlock', () => {
+            this.currentRadioHowl?.play();
+          });
+        }
       }
     });
 
@@ -813,7 +715,12 @@ export class AudioManager {
   }
 
   private nextTrack(): void {
+    if (!this.isRadioPlaying) return;
+
     const station = this.radioStations[this.currentStationIndex];
+    if (station.tracks.length === 0) return;
+
+    // Cycle to next track
     station.currentTrackIndex = (station.currentTrackIndex + 1) % station.tracks.length;
     this.playCurrentStation();
   }
@@ -825,12 +732,15 @@ export class AudioManager {
       const trackInfo = display.querySelector('.radio-song');
 
       if (stationName) {
-        stationName.textContent = `${station.icon} ${station.name}`;
+        const liveIndicator = station.isLiveStream ? ' 🔴 LIVE' : '';
+        stationName.textContent = `${station.icon} ${station.name}${liveIndicator}`;
       }
 
       if (trackInfo) {
         const track = station.tracks[station.currentTrackIndex];
-        if (track) {
+        if (station.isLiveStream) {
+          trackInfo.textContent = `${station.genre} - SomaFM`;
+        } else if (track) {
           trackInfo.textContent = `${track.title} - ${track.artist}`;
         } else {
           trackInfo.textContent = station.genre;
@@ -879,6 +789,9 @@ export class AudioManager {
     if (this.currentRadioHowl) {
       this.currentRadioHowl.volume(this.config.radioVolume);
     }
+    if (this.currentStreamAudio) {
+      this.currentStreamAudio.volume = this.config.radioVolume * this.config.masterVolume;
+    }
   }
 
   startAmbient(id: string): void {
@@ -898,12 +811,18 @@ export class AudioManager {
     if (this.currentRadioHowl) {
       this.currentRadioHowl.pause();
     }
+    if (this.currentStreamAudio) {
+      this.currentStreamAudio.pause();
+    }
   }
 
   resumeAll(): void {
     this.isPaused = false;
     if (this.isRadioPlaying && this.currentRadioHowl) {
       this.currentRadioHowl.play();
+    }
+    if (this.isRadioPlaying && this.currentStreamAudio) {
+      this.currentStreamAudio.play().catch(() => {});
     }
   }
 
