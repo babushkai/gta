@@ -37,11 +37,25 @@ const RADIO_STATIONS: RadioStation[] = [
     currentTrackIndex: 0,
     tracks: [
       {
-        id: 'track_1',
+        id: 'flash_1',
         title: 'Synthwave Dreams',
-        artist: 'Pixabay Artist',
+        artist: 'RetroSound',
         duration: 180,
-        file: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3' // Synthwave
+        file: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3'
+      },
+      {
+        id: 'flash_2',
+        title: 'Neon Nights',
+        artist: 'SynthMaster',
+        duration: 195,
+        file: 'https://cdn.pixabay.com/download/audio/2022/10/25/audio_946bd42714.mp3'
+      },
+      {
+        id: 'flash_3',
+        title: 'Electric Sunset',
+        artist: 'Wave Runner',
+        duration: 210,
+        file: 'https://cdn.pixabay.com/download/audio/2023/09/04/audio_1c194b0d75.mp3'
       }
     ]
   },
@@ -54,11 +68,25 @@ const RADIO_STATIONS: RadioStation[] = [
     currentTrackIndex: 0,
     tracks: [
       {
-        id: 'track_1',
+        id: 'vrock_1',
         title: 'Electric Energy',
-        artist: 'Pixabay Artist',
+        artist: 'Power Chord',
         duration: 200,
-        file: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_8cb749d484.mp3' // Rock
+        file: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_8cb749d484.mp3'
+      },
+      {
+        id: 'vrock_2',
+        title: 'Highway Fury',
+        artist: 'Steel Thunder',
+        duration: 185,
+        file: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_ea7028a313.mp3'
+      },
+      {
+        id: 'vrock_3',
+        title: 'Metal Storm',
+        artist: 'Riff Master',
+        duration: 220,
+        file: 'https://cdn.pixabay.com/download/audio/2023/07/30/audio_e1c72e9bea.mp3'
       }
     ]
   },
@@ -71,11 +99,242 @@ const RADIO_STATIONS: RadioStation[] = [
     currentTrackIndex: 0,
     tracks: [
       {
-        id: 'track_1',
+        id: 'chill_1',
         title: 'Lofi Chill',
-        artist: 'Pixabay Artist',
+        artist: 'Mellow Beats',
         duration: 150,
-        file: 'https://cdn.pixabay.com/download/audio/2022/05/16/audio_f3709e5d42.mp3' // Lofi
+        file: 'https://cdn.pixabay.com/download/audio/2022/05/16/audio_f3709e5d42.mp3'
+      },
+      {
+        id: 'chill_2',
+        title: 'Rainy Afternoon',
+        artist: 'Cozy Vibes',
+        duration: 175,
+        file: 'https://cdn.pixabay.com/download/audio/2022/10/09/audio_cb40dee917.mp3'
+      },
+      {
+        id: 'chill_3',
+        title: 'Coffee Shop',
+        artist: 'Lazy Sunday',
+        duration: 160,
+        file: 'https://cdn.pixabay.com/download/audio/2024/02/14/audio_9a8cb6dbbb.mp3'
+      }
+    ]
+  },
+  {
+    id: 'fever_105',
+    name: 'Fever 105',
+    genre: 'Disco/Funk',
+    icon: '🪩',
+    djName: 'Oliver Biscuit',
+    currentTrackIndex: 0,
+    tracks: [
+      {
+        id: 'fever_1',
+        title: 'Disco Nights',
+        artist: 'Groove Machine',
+        duration: 190,
+        file: 'https://cdn.pixabay.com/download/audio/2022/08/02/audio_54ca0ffa52.mp3'
+      },
+      {
+        id: 'fever_2',
+        title: 'Funky Town',
+        artist: 'Bass Brothers',
+        duration: 205,
+        file: 'https://cdn.pixabay.com/download/audio/2022/03/10/audio_8920da4562.mp3'
+      },
+      {
+        id: 'fever_3',
+        title: 'Get Down',
+        artist: 'Soul Train',
+        duration: 180,
+        file: 'https://cdn.pixabay.com/download/audio/2023/04/20/audio_f7de5b8ce5.mp3'
+      }
+    ]
+  },
+  {
+    id: 'emotion',
+    name: 'Emotion 98.3',
+    genre: 'Soft Rock/Ballads',
+    icon: '💕',
+    djName: 'Fernando Martinez',
+    currentTrackIndex: 0,
+    tracks: [
+      {
+        id: 'emotion_1',
+        title: 'Endless Love',
+        artist: 'Heart Strings',
+        duration: 240,
+        file: 'https://cdn.pixabay.com/download/audio/2022/11/22/audio_cd15e03da6.mp3'
+      },
+      {
+        id: 'emotion_2',
+        title: 'Moonlight Serenade',
+        artist: 'Velvet Voice',
+        duration: 220,
+        file: 'https://cdn.pixabay.com/download/audio/2022/02/07/audio_70d53e0e60.mp3'
+      },
+      {
+        id: 'emotion_3',
+        title: 'Summer Romance',
+        artist: 'Smooth Jazz',
+        duration: 195,
+        file: 'https://cdn.pixabay.com/download/audio/2022/05/17/audio_c8c8a73467.mp3'
+      }
+    ]
+  },
+  {
+    id: 'espantoso',
+    name: 'Radio Espantoso',
+    genre: 'Latin/Salsa',
+    icon: '🌴',
+    djName: 'Pepe',
+    currentTrackIndex: 0,
+    tracks: [
+      {
+        id: 'esp_1',
+        title: 'Havana Nights',
+        artist: 'Los Calientes',
+        duration: 200,
+        file: 'https://cdn.pixabay.com/download/audio/2022/06/07/audio_b02a08f58f.mp3'
+      },
+      {
+        id: 'esp_2',
+        title: 'Salsa Fever',
+        artist: 'Ritmo Latino',
+        duration: 185,
+        file: 'https://cdn.pixabay.com/download/audio/2022/08/25/audio_4f3b0a8a4a.mp3'
+      },
+      {
+        id: 'esp_3',
+        title: 'Tropical Heat',
+        artist: 'Caribbean Soul',
+        duration: 210,
+        file: 'https://cdn.pixabay.com/download/audio/2022/10/30/audio_073a344e9f.mp3'
+      }
+    ]
+  },
+  {
+    id: 'wave_103',
+    name: 'Wave 103',
+    genre: 'Electronic/EDM',
+    icon: '⚡',
+    djName: 'Adam First',
+    currentTrackIndex: 0,
+    tracks: [
+      {
+        id: 'wave_1',
+        title: 'Digital Dreams',
+        artist: 'Cyber Pulse',
+        duration: 175,
+        file: 'https://cdn.pixabay.com/download/audio/2022/03/24/audio_a8a76e95e5.mp3'
+      },
+      {
+        id: 'wave_2',
+        title: 'Bass Drop',
+        artist: 'Beat Factory',
+        duration: 195,
+        file: 'https://cdn.pixabay.com/download/audio/2022/11/14/audio_1e11067e99.mp3'
+      },
+      {
+        id: 'wave_3',
+        title: 'Rave Night',
+        artist: 'DJ Electronica',
+        duration: 210,
+        file: 'https://cdn.pixabay.com/download/audio/2023/02/02/audio_8dfc526f39.mp3'
+      }
+    ]
+  },
+  {
+    id: 'wildstyle',
+    name: 'Wildstyle FM',
+    genre: 'Hip-Hop',
+    icon: '🎤',
+    djName: 'Mr. Magic',
+    currentTrackIndex: 0,
+    tracks: [
+      {
+        id: 'wild_1',
+        title: 'Street Beats',
+        artist: 'Urban Flow',
+        duration: 180,
+        file: 'https://cdn.pixabay.com/download/audio/2022/01/20/audio_c7f0fab6ab.mp3'
+      },
+      {
+        id: 'wild_2',
+        title: 'Block Party',
+        artist: 'MC Fresh',
+        duration: 200,
+        file: 'https://cdn.pixabay.com/download/audio/2022/09/08/audio_0e22a9e5ca.mp3'
+      },
+      {
+        id: 'wild_3',
+        title: 'Boom Box',
+        artist: 'Beat Kings',
+        duration: 165,
+        file: 'https://cdn.pixabay.com/download/audio/2023/06/15/audio_55c1a7e09b.mp3'
+      }
+    ]
+  },
+  {
+    id: 'k_jah',
+    name: 'K-JAH West',
+    genre: 'Reggae/Dub',
+    icon: '🌿',
+    djName: 'Marshall Peters',
+    currentTrackIndex: 0,
+    tracks: [
+      {
+        id: 'kjah_1',
+        title: 'Island Vibes',
+        artist: 'Roots Connection',
+        duration: 220,
+        file: 'https://cdn.pixabay.com/download/audio/2022/04/27/audio_87e8ffd7be.mp3'
+      },
+      {
+        id: 'kjah_2',
+        title: 'Dub Session',
+        artist: 'King Tubby Jr',
+        duration: 195,
+        file: 'https://cdn.pixabay.com/download/audio/2022/07/19/audio_e08ff2cc8e.mp3'
+      },
+      {
+        id: 'kjah_3',
+        title: 'Jah Blessing',
+        artist: 'Zion Train',
+        duration: 185,
+        file: 'https://cdn.pixabay.com/download/audio/2023/01/10/audio_d4d5f56e8d.mp3'
+      }
+    ]
+  },
+  {
+    id: 'rise_fm',
+    name: 'Rise FM',
+    genre: 'Trance/House',
+    icon: '🌅',
+    djName: 'Boy Sanchez',
+    currentTrackIndex: 0,
+    tracks: [
+      {
+        id: 'rise_1',
+        title: 'Sunrise',
+        artist: 'Trance Nation',
+        duration: 240,
+        file: 'https://cdn.pixabay.com/download/audio/2022/08/31/audio_419263ae16.mp3'
+      },
+      {
+        id: 'rise_2',
+        title: 'Euphoria',
+        artist: 'Dream State',
+        duration: 210,
+        file: 'https://cdn.pixabay.com/download/audio/2022/12/05/audio_c22b629291.mp3'
+      },
+      {
+        id: 'rise_3',
+        title: 'Club Life',
+        artist: 'Night Owl',
+        duration: 200,
+        file: 'https://cdn.pixabay.com/download/audio/2023/03/12/audio_c7e9f4b4e9.mp3'
       }
     ]
   }
@@ -528,17 +787,35 @@ export class AudioManager {
       src: [track.file],
       html5: true, // Use HTML5 audio for streaming
       volume: this.config.radioVolume,
-      loop: true,
+      loop: false, // Don't loop single track, advance to next
       onplay: () => {
         console.log(`Now playing: ${station.name} - ${track.title}`);
       },
-      onloaderror: (id, error) => {
+      onend: () => {
+        // Advance to next track on the station
+        if (this.isRadioPlaying) {
+          this.nextTrack();
+        }
+      },
+      onloaderror: () => {
         console.log(`Radio: ${station.name} (loading music...)`);
+        // Try next track if this one fails
+        setTimeout(() => {
+          if (this.isRadioPlaying) {
+            this.nextTrack();
+          }
+        }, 1000);
       }
     });
 
     this.currentRadioHowl.play();
     this.showRadioDisplay(station);
+  }
+
+  private nextTrack(): void {
+    const station = this.radioStations[this.currentStationIndex];
+    station.currentTrackIndex = (station.currentTrackIndex + 1) % station.tracks.length;
+    this.playCurrentStation();
   }
 
   private showRadioDisplay(station: RadioStation): void {
