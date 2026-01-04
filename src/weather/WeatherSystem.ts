@@ -279,27 +279,37 @@ export class WeatherSystem {
     this.sun.position.set(100, 100, 50);
     this.sun.castShadow = true;
 
-    // Higher quality shadows with larger map - optimized for NYC cityscape
-    this.sun.shadow.mapSize.width = 4096;
-    this.sun.shadow.mapSize.height = 4096;
-    this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 500;
-    this.sun.shadow.camera.left = -150;
-    this.sun.shadow.camera.right = 150;
-    this.sun.shadow.camera.top = 150;
-    this.sun.shadow.camera.bottom = -150;
-    this.sun.shadow.bias = -0.0002;
+    // Detect mobile for performance adjustments
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || ('ontouchstart' in window);
+
+    // Shadow quality - higher resolution for desktop, lower for mobile
+    const shadowMapSize = isMobile ? 1024 : 2048;
+    this.sun.shadow.mapSize.width = shadowMapSize;
+    this.sun.shadow.mapSize.height = shadowMapSize;
+
+    // Shadow camera follows player - covers area around player
+    // Increased range for better shadow coverage of tall buildings
+    const shadowRange = isMobile ? 80 : 120;
+    this.sun.shadow.camera.near = 0.5;
+    this.sun.shadow.camera.far = 400;
+    this.sun.shadow.camera.left = -shadowRange;
+    this.sun.shadow.camera.right = shadowRange;
+    this.sun.shadow.camera.top = shadowRange;
+    this.sun.shadow.camera.bottom = -shadowRange;
+
+    // Improved shadow bias to reduce peter-panning and shadow acne
+    this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.02;
-    this.sun.shadow.radius = 3; // Softer shadow edges for realism
+    this.sun.shadow.radius = isMobile ? 1 : 2; // Softer on desktop
 
     // Add a secondary fill light to simulate sky bounce light
-    const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.3);
-    fillLight.position.set(-50, 30, -50);
+    const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.25);
+    fillLight.position.set(-50, 40, -50);
     this.game.scene.add(fillLight);
 
     // Add rim light for dramatic NYC silhouettes
-    const rimLight = new THREE.DirectionalLight(0xffeedd, 0.2);
-    rimLight.position.set(0, 10, -100);
+    const rimLight = new THREE.DirectionalLight(0xffeedd, 0.15);
+    rimLight.position.set(0, 20, -100);
     this.game.scene.add(rimLight);
 
     this.game.scene.add(this.sun);
@@ -311,7 +321,8 @@ export class WeatherSystem {
   }
 
   private createSkybox(): void {
-    const skyGeometry = new THREE.SphereGeometry(500, 64, 64);
+    // Larger sphere to prevent clipping at far distances
+    const skyGeometry = new THREE.SphereGeometry(800, 64, 64);
     const skyMaterial = new THREE.ShaderMaterial({
       uniforms: {
         topColor: { value: new THREE.Color(0x0077ff) },
@@ -345,68 +356,92 @@ export class WeatherSystem {
         varying vec3 vWorldPosition;
         varying vec3 vPosition;
 
-        // Pseudo-random for stars
+        // Better noise function for stars
         float hash(vec2 p) {
-          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+          vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+          p3 += dot(p3, p3.yzx + 33.33);
+          return fract((p3.x + p3.y) * p3.z);
         }
 
         void main() {
           vec3 direction = normalize(vWorldPosition);
           float h = direction.y;
 
-          // Sky gradient with horizon glow
+          // Improved sky gradient with smoother horizon blend
           vec3 skyColor;
-          if (h > 0.0) {
-            float horizonFade = 1.0 - pow(h, 0.4);
-            skyColor = mix(topColor, horizonColor, horizonFade * 0.5);
-            skyColor = mix(skyColor, bottomColor, pow(1.0 - h, 4.0));
+          float horizonBlend = 1.0 - smoothstep(0.0, 0.35, abs(h));
+
+          if (h >= 0.0) {
+            // Above horizon - smooth gradient from horizon to zenith
+            skyColor = mix(horizonColor, topColor, pow(h, 0.5));
+            // Add subtle atmospheric haze near horizon
+            skyColor = mix(skyColor, horizonColor, horizonBlend * 0.5);
           } else {
-            skyColor = mix(horizonColor, bottomColor, pow(min(-h + 0.1, 1.0), 0.5));
+            // Below horizon - darker gradient for ground reflection
+            skyColor = mix(horizonColor, bottomColor * 0.6, pow(-h, 0.4));
           }
 
-          // Sun disk and glow
+          // Sun with improved corona and rays
           vec3 sunDir = normalize(sunPosition);
           float sunDot = dot(direction, sunDir);
-          if (sunDot > 0.0) {
-            // Sun disk
-            float sunSize = 0.9995;
-            if (sunDot > sunSize) {
-              float sunEdge = smoothstep(sunSize, 0.9999, sunDot);
-              skyColor = mix(skyColor, sunColor * 2.0, sunEdge);
-            }
-            // Sun glow
-            float sunGlow = pow(max(sunDot, 0.0), 8.0) * 0.5;
-            skyColor += sunColor * sunGlow;
-            // Atmospheric scattering near horizon
-            if (sunDir.y < 0.3 && sunDir.y > -0.1) {
-              float scatterAmount = pow(max(sunDot, 0.0), 2.0) * (1.0 - sunDir.y * 3.0);
-              skyColor = mix(skyColor, vec3(1.0, 0.6, 0.3), scatterAmount * 0.4);
+
+          if (sunDir.y > -0.15) {
+            float sunVisibility = smoothstep(-0.15, 0.05, sunDir.y);
+
+            // Sun disk with soft edge
+            float sunDisk = smoothstep(0.9992, 0.9998, sunDot);
+            skyColor = mix(skyColor, sunColor * 2.5, sunDisk * sunVisibility);
+
+            // Sun corona - multiple layers for realism
+            float corona1 = pow(max(sunDot, 0.0), 16.0) * 0.6;
+            float corona2 = pow(max(sunDot, 0.0), 4.0) * 0.25;
+            float corona3 = pow(max(sunDot, 0.0), 2.0) * 0.1;
+            skyColor += sunColor * (corona1 + corona2 + corona3) * sunVisibility;
+
+            // Sunset/sunrise atmospheric scattering
+            if (sunDir.y < 0.3) {
+              float scatterFactor = (0.3 - sunDir.y) / 0.3;
+              float horizonScatter = pow(max(sunDot, 0.0), 2.0) * scatterFactor;
+              vec3 scatterColor = mix(vec3(1.0, 0.7, 0.4), vec3(1.0, 0.4, 0.2), scatterFactor);
+              skyColor = mix(skyColor, scatterColor, horizonScatter * 0.4 * horizonBlend);
+              // Add sky-wide warm tint during golden hour
+              skyColor = mix(skyColor, scatterColor * 0.7, scatterFactor * 0.15 * (1.0 - h));
             }
           }
 
-          // Moon
+          // Moon with subtle glow
           vec3 moonDir = normalize(moonPosition);
           float moonDot = dot(direction, moonDir);
-          if (moonDot > 0.999) {
-            float moonEdge = smoothstep(0.999, 0.9995, moonDot);
-            skyColor = mix(skyColor, vec3(0.9, 0.9, 1.0), moonEdge * starIntensity);
+          if (moonDir.y > 0.0 && starIntensity > 0.0) {
+            float moonDisk = smoothstep(0.998, 0.9995, moonDot);
+            skyColor = mix(skyColor, vec3(0.95, 0.95, 1.0), moonDisk * starIntensity);
+            float moonGlow = pow(max(moonDot, 0.0), 32.0) * 0.12;
+            skyColor += vec3(0.7, 0.8, 1.0) * moonGlow * starIntensity;
           }
 
-          // Stars (only at night)
-          if (starIntensity > 0.0 && h > 0.0) {
-            vec2 starCoord = vPosition.xz / (h + 0.1) * 50.0;
-            float star = hash(floor(starCoord));
-            if (star > 0.99) {
-              float twinkle = sin(time * 3.0 + star * 100.0) * 0.5 + 0.5;
-              float starBrightness = (star - 0.99) * 100.0 * twinkle;
-              skyColor += vec3(starBrightness) * starIntensity * h;
+          // Stars with better distribution and varied brightness
+          if (starIntensity > 0.0 && h > 0.05) {
+            // Multiple star layers for different sizes
+            for (float layer = 1.0; layer <= 3.0; layer += 1.0) {
+              vec2 starCoord = vPosition.xz / (h + 0.05) * (25.0 + layer * 18.0);
+              float star = hash(floor(starCoord) + layer * 100.0);
+              float threshold = 0.985 + layer * 0.005;
+
+              if (star > threshold) {
+                float twinkle = sin(time * (2.0 + layer) + star * 100.0) * 0.3 + 0.7;
+                float brightness = (star - threshold) / (1.0 - threshold);
+                brightness *= twinkle * (4.0 - layer) / 3.0;
+                vec3 starColor = mix(vec3(1.0, 0.95, 0.9), vec3(0.9, 0.95, 1.0), hash(floor(starCoord) + 50.0));
+                skyColor += starColor * brightness * starIntensity * h * 0.7;
+              }
             }
           }
 
           gl_FragColor = vec4(skyColor, 1.0);
         }
       `,
-      side: THREE.BackSide
+      side: THREE.BackSide,
+      depthWrite: false
     });
 
     this.skybox = new THREE.Mesh(skyGeometry, skyMaterial);
@@ -515,14 +550,24 @@ export class WeatherSystem {
     const time = this.state.timeOfDay;
     const angle = ((time - 6) / 24) * Math.PI * 2;
 
-    this.state.sunPosition.set(
-      Math.cos(angle) * 100,
-      Math.sin(angle) * 100,
-      50
-    );
+    // Calculate sun direction
+    const sunDirection = new THREE.Vector3(
+      Math.cos(angle),
+      Math.sin(angle),
+      0.3
+    ).normalize();
 
-    this.sun.position.copy(this.state.sunPosition);
-    this.sun.target.position.copy(this.game.player.position);
+    // Store normalized sun direction for skybox
+    this.state.sunPosition.copy(sunDirection).multiplyScalar(100);
+
+    // Position sun relative to player for correct shadow rendering
+    const playerPos = this.game.player.position;
+    this.sun.position.set(
+      playerPos.x + sunDirection.x * 150,
+      sunDirection.y * 150,
+      playerPos.z + sunDirection.z * 150
+    );
+    this.sun.target.position.copy(playerPos);
 
     const isDaytime = time > 6 && time < 20;
     const isSunset = time >= 17 && time < 20;
