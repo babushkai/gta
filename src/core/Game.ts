@@ -106,7 +106,7 @@ export class Game extends EventEmitter {
         dof: false,
         motionBlur: false, // Disable motion blur
         fov: 75,
-        drawDistance: isMobile ? 150 : 400 // Reduced draw distance
+        drawDistance: isMobile ? 500 : 5000 // Extended for skybox visibility
       },
       audio: {
         masterVolume: 1.0,

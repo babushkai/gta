@@ -291,7 +291,7 @@ export class WeatherSystem {
     // Increased range for better shadow coverage of tall buildings
     const shadowRange = isMobile ? 80 : 120;
     this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 300; // Keep well below skybox (500)
+    this.sun.shadow.camera.far = 300; // Shadow range for nearby objects only
     this.sun.shadow.camera.left = -shadowRange;
     this.sun.shadow.camera.right = shadowRange;
     this.sun.shadow.camera.top = shadowRange;
@@ -321,8 +321,8 @@ export class WeatherSystem {
   }
 
   private createSkybox(): void {
-    // Sky sphere - large enough to encompass the scene
-    const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+    // Sky sphere - use a very large sphere that won't interfere with shadows
+    const skyGeometry = new THREE.SphereGeometry(4000, 32, 32);
     const skyMaterial = new THREE.ShaderMaterial({
       uniforms: {
         topColor: { value: new THREE.Color(0x0077ff) },
@@ -422,7 +422,9 @@ export class WeatherSystem {
         }
       `,
       side: THREE.BackSide,
-      depthWrite: false
+      depthWrite: false,
+      depthTest: false, // Always render behind everything
+      fog: false // Don't apply scene fog to skybox
     });
 
     this.skybox = new THREE.Mesh(skyGeometry, skyMaterial);
@@ -430,6 +432,7 @@ export class WeatherSystem {
     this.skybox.castShadow = false;
     this.skybox.renderOrder = -1000; // Render skybox first (background)
     this.skybox.frustumCulled = false; // Always render skybox
+    this.skybox.name = 'skybox';
     this.game.scene.add(this.skybox);
   }
 
