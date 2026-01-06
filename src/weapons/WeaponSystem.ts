@@ -944,10 +944,59 @@ export class WeaponSystem {
     }
   }
 
+  private getMuzzleOffset(config: WeaponConfig): number {
+    // Distance from weapon center to muzzle tip
+    switch (config.type) {
+      case 'pistol':
+        return 0.35;
+      case 'smg':
+        return 0.45;
+      case 'shotgun':
+        return 0.7;
+      case 'rifle':
+        return config.id === 'sniper' ? 0.9 : 0.75;
+      case 'heavy':
+        if (config.id === 'minigun') return 0.8;
+        if (config.id === 'flamethrower') return 0.6;
+        return 1.0; // RPG
+      default:
+        return 0.3;
+    }
+  }
+
   private performShot(weapon: Weapon): void {
     const camera = this.game.camera;
-    const direction = new THREE.Vector3(0, 0, -1);
-    direction.applyQuaternion(camera.quaternion);
+    const player = this.game.player;
+
+    // Calculate where the crosshair is pointing (target point from camera center)
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    cameraDirection.applyQuaternion(camera.quaternion);
+
+    // Get target point - where the camera crosshair aims at max range
+    const targetPoint = camera.position.clone().add(
+      cameraDirection.clone().multiplyScalar(weapon.config.range)
+    );
+
+    // Get weapon muzzle position in world space
+    const muzzleOffset = this.getMuzzleOffset(weapon.config);
+    const muzzlePosition = new THREE.Vector3();
+
+    if (this.weaponMesh) {
+      // Get world position of weapon
+      this.weaponMesh.getWorldPosition(muzzlePosition);
+      // Add muzzle offset (forward direction of weapon)
+      const muzzleForward = new THREE.Vector3(0, 0, 1).applyQuaternion(player.mesh.quaternion);
+      muzzlePosition.add(muzzleForward.multiplyScalar(muzzleOffset));
+    } else {
+      // Fallback to player position + offset
+      muzzlePosition.copy(player.position);
+      muzzlePosition.y += 1.1; // Chest height
+      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(player.mesh.quaternion);
+      muzzlePosition.add(forward.multiplyScalar(0.5));
+    }
+
+    // Calculate shot direction from muzzle to target
+    const direction = targetPoint.clone().sub(muzzlePosition).normalize();
 
     // Apply accuracy spread
     const spread = (1 - weapon.config.accuracy) * 0.1;
@@ -956,7 +1005,7 @@ export class WeaponSystem {
     direction.z += (Math.random() - 0.5) * spread;
     direction.normalize();
 
-    const from = camera.position.clone();
+    const from = muzzlePosition.clone();
     const to = from.clone().add(direction.clone().multiplyScalar(weapon.config.range));
 
     // Create bullet tracer visual (for guns, not melee)
@@ -1353,10 +1402,8 @@ export class WeaponSystem {
   }
 
   private createBulletTracer(from: THREE.Vector3, to: THREE.Vector3, config: WeaponConfig): void {
-    // Offset start position to be near weapon muzzle
-    const muzzleOffset = new THREE.Vector3(0.3, -0.2, -0.5);
-    muzzleOffset.applyQuaternion(this.game.camera.quaternion);
-    const startPos = from.clone().add(muzzleOffset);
+    // 'from' is already the muzzle position from performShot
+    const startPos = from.clone();
 
     // Create tracer line geometry
     const points = [startPos, to];
@@ -1440,21 +1487,22 @@ export class WeaponSystem {
     });
     const casing = new THREE.Mesh(casingGeometry, casingMaterial);
 
-    // Position at weapon ejection port
-    const ejectOffset = new THREE.Vector3(0.15, -0.1, -0.2);
-    ejectOffset.applyQuaternion(this.game.camera.quaternion);
+    // Position at weapon ejection port (right side of weapon)
+    const player = this.game.player;
+    const ejectOffset = new THREE.Vector3(0.2, 0.05, -0.1);
+    ejectOffset.applyQuaternion(player.mesh.quaternion);
     casing.position.copy(position.clone().add(ejectOffset));
     casing.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
 
     this.game.scene.add(casing);
 
-    // Physics-like ejection
+    // Physics-like ejection (eject to the right side of player)
     const velocity = new THREE.Vector3(
-      (Math.random() - 0.3) * 3,
+      2 + Math.random() * 2, // Eject to right
       Math.random() * 2 + 1,
-      (Math.random() - 0.5) * 2
+      (Math.random() - 0.5) * 1
     );
-    velocity.applyQuaternion(this.game.camera.quaternion);
+    velocity.applyQuaternion(player.mesh.quaternion);
 
     let frame = 0;
     const gravity = -15;

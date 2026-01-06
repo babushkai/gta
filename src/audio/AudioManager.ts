@@ -170,6 +170,13 @@ const RADIO_STATIONS: RadioStation[] = [
   }
 ];
 
+// Ambient background music streams (plays when on foot)
+const AMBIENT_MUSIC_STREAMS = [
+  { id: 'city_vibes', name: 'City Vibes', url: 'https://streams.fluxfm.de/Chillhop/mp3-320/streams.fluxfm.de/' },
+  { id: 'night_city', name: 'Night City', url: 'https://stream.nightride.fm/nightride.m4a' },
+  { id: 'urban_jazz', name: 'Urban Jazz', url: 'https://streaming.radio.co/s774887f7b/listen' },
+];
+
 export class AudioManager {
   private config: AudioConfig;
   private audioContext: AudioContext | null = null;
@@ -182,6 +189,11 @@ export class AudioManager {
   private soundCache: Map<string, AudioBuffer> = new Map();
   private policeDispatchHowls: Howl[] = [];
   private isPoliceDispatchPlaying: boolean = false;
+
+  // Ambient background music
+  private ambientMusicAudio: HTMLAudioElement | null = null;
+  private isAmbientMusicPlaying: boolean = false;
+  private currentAmbientIndex: number = 0;
 
   constructor(config: AudioConfig) {
     this.config = config;
@@ -197,14 +209,24 @@ export class AudioManager {
 
   private setupEventListeners(): void {
     globalEvents.on('vehicle_enter', () => {
+      // Stop ambient music, start radio
+      this.stopAmbientMusic();
       if (!this.isRadioPlaying) {
         this.startRadio();
       }
     });
 
     globalEvents.on('vehicle_exit', () => {
+      // Stop radio, start ambient music
       this.stopRadio();
+      this.startAmbientMusic();
     });
+  }
+
+  // Auto-start ambient music when game begins
+  startBackgroundMusic(): void {
+    // Start ambient music for on-foot gameplay
+    this.startAmbientMusic();
   }
 
   // Generate simple sound effects using Web Audio API
@@ -476,6 +498,137 @@ export class AudioManager {
           oscillator.type = 'square';
           oscillator.frequency.setValueAtTime(400, this.audioContext.currentTime);
           gainNode.gain.setValueAtTime(volume * 0.25, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+          oscillator.start();
+          oscillator.stop(this.audioContext.currentTime + 0.2);
+          break;
+
+        // ==================== NYC AMBIENT SOUNDS ====================
+
+        case 'car_alarm':
+          // Annoying car alarm - alternating tones
+          oscillator.type = 'square';
+          const alarmTime = this.audioContext.currentTime;
+          for (let i = 0; i < 8; i++) {
+            oscillator.frequency.setValueAtTime(800, alarmTime + i * 0.25);
+            oscillator.frequency.setValueAtTime(600, alarmTime + i * 0.25 + 0.125);
+          }
+          gainNode.gain.setValueAtTime(volume * 0.3, alarmTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, alarmTime + 2);
+          oscillator.start();
+          oscillator.stop(alarmTime + 2);
+          break;
+
+        case 'subway_rumble':
+          // Low rumbling subway passing underground
+          oscillator.type = 'triangle';
+          oscillator.frequency.setValueAtTime(35, this.audioContext.currentTime);
+          oscillator.frequency.linearRampToValueAtTime(50, this.audioContext.currentTime + 1);
+          oscillator.frequency.linearRampToValueAtTime(35, this.audioContext.currentTime + 2);
+          gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+          gainNode.gain.linearRampToValueAtTime(volume * 0.4, this.audioContext.currentTime + 0.5);
+          gainNode.gain.linearRampToValueAtTime(volume * 0.4, this.audioContext.currentTime + 1.5);
+          gainNode.gain.linearRampToValueAtTime(0.01, this.audioContext.currentTime + 2.5);
+          oscillator.start();
+          oscillator.stop(this.audioContext.currentTime + 2.5);
+          break;
+
+        case 'ambulance_siren':
+          // Ambulance wail - slower than police
+          oscillator.type = 'sine';
+          const ambTime = this.audioContext.currentTime;
+          oscillator.frequency.setValueAtTime(700, ambTime);
+          oscillator.frequency.linearRampToValueAtTime(1000, ambTime + 0.6);
+          oscillator.frequency.linearRampToValueAtTime(700, ambTime + 1.2);
+          oscillator.frequency.linearRampToValueAtTime(1000, ambTime + 1.8);
+          gainNode.gain.setValueAtTime(volume * 0.35, ambTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, ambTime + 2);
+          oscillator.start();
+          oscillator.stop(ambTime + 2);
+          break;
+
+        case 'fire_siren':
+          // Fire truck air horn - low powerful blasts
+          oscillator.type = 'sawtooth';
+          const fireTime = this.audioContext.currentTime;
+          oscillator.frequency.setValueAtTime(180, fireTime);
+          oscillator.frequency.setValueAtTime(180, fireTime + 0.8);
+          oscillator.frequency.setValueAtTime(200, fireTime + 1.0);
+          oscillator.frequency.setValueAtTime(180, fireTime + 1.8);
+          gainNode.gain.setValueAtTime(volume * 0.4, fireTime);
+          gainNode.gain.setValueAtTime(0.01, fireTime + 0.7);
+          gainNode.gain.setValueAtTime(volume * 0.4, fireTime + 0.9);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, fireTime + 2);
+          oscillator.start();
+          oscillator.stop(fireTime + 2);
+          break;
+
+        case 'distant_siren':
+          // Faint distant siren
+          oscillator.type = 'sine';
+          const distTime = this.audioContext.currentTime;
+          oscillator.frequency.setValueAtTime(500, distTime);
+          oscillator.frequency.linearRampToValueAtTime(700, distTime + 1);
+          oscillator.frequency.linearRampToValueAtTime(500, distTime + 2);
+          gainNode.gain.setValueAtTime(volume * 0.1, distTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, distTime + 2.5);
+          oscillator.start();
+          oscillator.stop(distTime + 2.5);
+          break;
+
+        case 'crowd_chatter':
+          // Background crowd noise - white noise filtered
+          const noiseBuffer = this.audioContext.createBuffer(1, this.audioContext.sampleRate * 0.5, this.audioContext.sampleRate);
+          const data = noiseBuffer.getChannelData(0);
+          for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1) * 0.3;
+          }
+          const noiseSource = this.audioContext.createBufferSource();
+          noiseSource.buffer = noiseBuffer;
+          const lowpass = this.audioContext.createBiquadFilter();
+          lowpass.type = 'lowpass';
+          lowpass.frequency.value = 400;
+          noiseSource.connect(lowpass);
+          lowpass.connect(gainNode);
+          gainNode.gain.setValueAtTime(volume * 0.15, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+          noiseSource.start();
+          noiseSource.stop(this.audioContext.currentTime + 0.5);
+          return; // Don't start oscillator
+
+        case 'dog_bark':
+          // Quick dog bark
+          oscillator.type = 'sawtooth';
+          oscillator.frequency.setValueAtTime(300, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + 0.05);
+          oscillator.frequency.exponentialRampToValueAtTime(250, this.audioContext.currentTime + 0.1);
+          gainNode.gain.setValueAtTime(volume * 0.35, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.12);
+          oscillator.start();
+          oscillator.stop(this.audioContext.currentTime + 0.12);
+          break;
+
+        case 'jackhammer':
+          // Jackhammer construction sound
+          oscillator.type = 'square';
+          const jackTime = this.audioContext.currentTime;
+          for (let i = 0; i < 10; i++) {
+            const t = jackTime + i * 0.08;
+            oscillator.frequency.setValueAtTime(80 + Math.random() * 30, t);
+          }
+          gainNode.gain.setValueAtTime(volume * 0.25, jackTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, jackTime + 0.8);
+          oscillator.start();
+          oscillator.stop(jackTime + 0.8);
+          break;
+
+        case 'taxi_whistle':
+          // Sharp whistle for hailing taxi
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(1200, this.audioContext.currentTime);
+          oscillator.frequency.linearRampToValueAtTime(1800, this.audioContext.currentTime + 0.1);
+          oscillator.frequency.linearRampToValueAtTime(1200, this.audioContext.currentTime + 0.15);
+          gainNode.gain.setValueAtTime(volume * 0.4, this.audioContext.currentTime);
           gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
           oscillator.start();
           oscillator.stop(this.audioContext.currentTime + 0.2);
@@ -794,16 +947,69 @@ export class AudioManager {
     }
   }
 
+  // Start ambient background music (plays when on foot)
+  startAmbientMusic(): void {
+    if (this.isAmbientMusicPlaying || this.isRadioPlaying) return;
+
+    const stream = AMBIENT_MUSIC_STREAMS[this.currentAmbientIndex];
+    console.log(`Starting ambient music: ${stream.name}`);
+
+    this.ambientMusicAudio = new Audio();
+    this.ambientMusicAudio.crossOrigin = 'anonymous';
+    this.ambientMusicAudio.volume = this.config.musicVolume * this.config.masterVolume * 0.3; // Lower volume for ambient
+    this.ambientMusicAudio.src = stream.url;
+
+    this.ambientMusicAudio.onplay = () => {
+      console.log(`Ambient music playing: ${stream.name}`);
+    };
+
+    this.ambientMusicAudio.onerror = () => {
+      console.log(`Ambient stream failed, trying next...`);
+      this.currentAmbientIndex = (this.currentAmbientIndex + 1) % AMBIENT_MUSIC_STREAMS.length;
+      setTimeout(() => {
+        if (!this.isRadioPlaying) {
+          this.isAmbientMusicPlaying = false;
+          this.startAmbientMusic();
+        }
+      }, 2000);
+    };
+
+    this.ambientMusicAudio.play().catch(() => {
+      // Autoplay blocked, will start on user interaction
+    });
+
+    this.isAmbientMusicPlaying = true;
+  }
+
+  stopAmbientMusic(): void {
+    if (this.ambientMusicAudio) {
+      this.ambientMusicAudio.pause();
+      this.ambientMusicAudio.src = '';
+      this.ambientMusicAudio = null;
+    }
+    this.isAmbientMusicPlaying = false;
+  }
+
+  nextAmbientTrack(): void {
+    this.currentAmbientIndex = (this.currentAmbientIndex + 1) % AMBIENT_MUSIC_STREAMS.length;
+    if (this.isAmbientMusicPlaying) {
+      this.stopAmbientMusic();
+      this.startAmbientMusic();
+    }
+  }
+
   startAmbient(id: string): void {
-    // Ambient sounds not implemented yet
+    this.startAmbientMusic();
   }
 
   stopAmbient(id: string): void {
-    // Ambient sounds not implemented yet
+    this.stopAmbientMusic();
   }
 
   setAmbientVolume(id: string, volume: number): void {
-    // Ambient sounds not implemented yet
+    if (this.ambientMusicAudio) {
+      this.ambientMusicAudio.volume = volume * this.config.masterVolume * 0.3;
+    }
   }
 
   pauseAll(): void {
@@ -814,6 +1020,9 @@ export class AudioManager {
     if (this.currentStreamAudio) {
       this.currentStreamAudio.pause();
     }
+    if (this.ambientMusicAudio) {
+      this.ambientMusicAudio.pause();
+    }
   }
 
   resumeAll(): void {
@@ -823,6 +1032,9 @@ export class AudioManager {
     }
     if (this.isRadioPlaying && this.currentStreamAudio) {
       this.currentStreamAudio.play().catch(() => {});
+    }
+    if (this.isAmbientMusicPlaying && this.ambientMusicAudio) {
+      this.ambientMusicAudio.play().catch(() => {});
     }
   }
 
@@ -835,8 +1047,13 @@ export class AudioManager {
   }
 
   dispose(): void {
+    this.stopAmbientMusic();
     if (this.currentRadioHowl) {
       this.currentRadioHowl.unload();
+    }
+    if (this.currentStreamAudio) {
+      this.currentStreamAudio.pause();
+      this.currentStreamAudio.src = '';
     }
     if (this.audioContext) {
       this.audioContext.close();

@@ -15,6 +15,8 @@ import { WeatherSystem } from '@/weather/WeatherSystem';
 import { AudioManager } from '@/audio/AudioManager';
 import { UIManager } from '@/ui/UIManager';
 import { World } from '@/world/World';
+import { CityEventsManager } from '@/world/CityEventsManager';
+import { CityDetailsManager } from '@/world/CityDetailsManager';
 import { SaveManager } from './SaveManager';
 import { WeaponSystem } from '@/weapons/WeaponSystem';
 import { NetworkManager } from '@/network/NetworkManager';
@@ -37,6 +39,8 @@ export class Game extends EventEmitter {
   public audio: AudioManager;
   public ui: UIManager;
   public world: World;
+  public cityEvents: CityEventsManager;
+  public cityDetails: CityDetailsManager;
   public save: SaveManager;
   public weapons: WeaponSystem;
   public network: NetworkManager;
@@ -76,6 +80,8 @@ export class Game extends EventEmitter {
     this.audio = new AudioManager(this.config.audio);
     this.ui = new UIManager(this);
     this.world = new World(this);
+    this.cityEvents = new CityEventsManager(this);
+    this.cityDetails = new CityDetailsManager(this);
     this.save = new SaveManager();
     this.weapons = new WeaponSystem(this);
     this.network = new NetworkManager(this);
@@ -100,8 +106,8 @@ export class Game extends EventEmitter {
         antialias: false, // Disable everywhere for performance
         shadows: !isMobile, // Disable shadows on mobile
         shadowMapSize: isMobile ? 256 : 1024, // Smaller shadow maps
-        postProcessing: false, // Disable post-processing everywhere
-        bloom: false,
+        postProcessing: !isMobile, // Lofi vibe on desktop
+        bloom: !isMobile, // Glow effects for neon/lights
         ssao: false, // Disable SSAO everywhere (expensive)
         dof: false,
         motionBlur: false, // Disable motion blur
@@ -143,6 +149,12 @@ export class Game extends EventEmitter {
       this.updateLoadingProgress(25, 'Loading world...');
       await this.world.initialize();
 
+      this.updateLoadingProgress(30, 'Bringing city to life...');
+      await this.cityEvents.initialize();
+
+      this.updateLoadingProgress(35, 'Adding city details...');
+      await this.cityDetails.initialize();
+
       this.updateLoadingProgress(40, 'Creating player...');
       await this.player.initialize();
 
@@ -169,6 +181,7 @@ export class Game extends EventEmitter {
 
       this.updateLoadingProgress(90, 'Loading audio...');
       await this.audio.initialize();
+      this.audio.startBackgroundMusic();
 
       this.updateLoadingProgress(95, 'Setting up UI...');
       await this.ui.initialize();
@@ -274,6 +287,8 @@ export class Game extends EventEmitter {
     this.missions.update(deltaTime);
     this.weather.update(deltaTime);
     this.world.update(deltaTime);
+    this.cityEvents.update(deltaTime);
+    this.cityDetails.update(deltaTime);
     this.weapons.update(deltaTime);
     this.ui.update(deltaTime);
     this.network.update(deltaTime);
@@ -400,6 +415,8 @@ export class Game extends EventEmitter {
     this.input.dispose();
     this.audio.dispose();
     this.world.dispose();
+    this.cityEvents.dispose();
+    this.cityDetails.dispose();
     this.network.dispose();
   }
 }

@@ -91,8 +91,21 @@ export class UIManager {
     });
 
     this.game.input.on('aim', (data: { pressed: boolean }) => {
-      this.setCrosshairVisible(data.pressed);
+      this.setCrosshairAiming(data.pressed);
     });
+  }
+
+  // Update crosshair visibility based on current weapon
+  updateCrosshairForWeapon(): void {
+    const weapon = this.game.weapons.getCurrentWeapon();
+    if (!weapon) {
+      this.setCrosshairVisible(false);
+      return;
+    }
+
+    // Show crosshair for firearms, hide for melee
+    const isFirearm = weapon.config.type !== 'melee' && weapon.config.type !== 'thrown';
+    this.setCrosshairVisible(isFirearm);
   }
 
   private setupPauseMenu(): void {
@@ -422,6 +435,12 @@ export class UIManager {
   setCrosshairVisible(visible: boolean): void {
     if (this.elements.crosshair) {
       this.elements.crosshair.classList.toggle('visible', visible);
+    }
+  }
+
+  setCrosshairAiming(aiming: boolean): void {
+    if (this.elements.crosshair) {
+      this.elements.crosshair.classList.toggle('aiming', aiming);
     }
   }
 

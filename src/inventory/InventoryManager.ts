@@ -331,6 +331,9 @@ export class InventoryManager {
       this.game.audio.playSound(weapon.config.sounds.equip);
     }
 
+    // Update crosshair visibility based on weapon type
+    this.game.ui.updateCrosshairForWeapon();
+
     return true;
   }
 

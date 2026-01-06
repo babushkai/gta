@@ -23,46 +23,46 @@ const NYC_ATMOSPHERIC = {
 const WEATHER_CONFIGS: Record<WeatherType, WeatherConfig> = {
   clear: {
     type: 'clear',
-    fogDensity: 0.0005,
-    fogColor: 0x87ceeb,
-    ambientLight: 0.6,
-    sunIntensity: 1.5,
+    fogDensity: 0.0002,
+    fogColor: 0xAABBCC,
+    ambientLight: 0.9,
+    sunIntensity: 2.0,
     rainIntensity: 0,
     cloudCoverage: 0.1
   },
   cloudy: {
     type: 'cloudy',
-    fogDensity: 0.001,
-    fogColor: 0x9ca5aa,
-    ambientLight: 0.4,
-    sunIntensity: 0.8,
+    fogDensity: 0.0005,
+    fogColor: 0xB0B8C0,
+    ambientLight: 0.7,
+    sunIntensity: 1.2,
     rainIntensity: 0,
     cloudCoverage: 0.7
   },
   rain: {
     type: 'rain',
-    fogDensity: 0.002,
-    fogColor: 0x6a7a7a,
-    ambientLight: 0.3,
-    sunIntensity: 0.4,
+    fogDensity: 0.001,
+    fogColor: 0x8A9A9A,
+    ambientLight: 0.5,
+    sunIntensity: 0.6,
     rainIntensity: 0.7,
     cloudCoverage: 0.9
   },
   storm: {
     type: 'storm',
-    fogDensity: 0.003,
-    fogColor: 0x3a4a4a,
-    ambientLight: 0.2,
-    sunIntensity: 0.2,
+    fogDensity: 0.002,
+    fogColor: 0x5A6A6A,
+    ambientLight: 0.35,
+    sunIntensity: 0.3,
     rainIntensity: 1.0,
     cloudCoverage: 1.0
   },
   fog: {
     type: 'fog',
-    fogDensity: 0.01,
-    fogColor: 0xcccccc,
-    ambientLight: 0.35,
-    sunIntensity: 0.5,
+    fogDensity: 0.005,
+    fogColor: 0xDDDDDD,
+    ambientLight: 0.55,
+    sunIntensity: 0.7,
     rainIntensity: 0,
     cloudCoverage: 0.5
   }
@@ -114,13 +114,13 @@ export class WeatherSystem {
       windDirection: new THREE.Vector3(1, 0, 0.5).normalize(),
       windSpeed: 5,
       temperature: 25,
-      timeOfDay: 12,
+      timeOfDay: 18.5, // Golden hour - lofi sunset vibe
       sunPosition: new THREE.Vector3()
     };
 
-    this.sun = new THREE.DirectionalLight(0xffffff, 1.5);
-    this.ambient = new THREE.AmbientLight(0x404040, 0.5);
-    this.hemisphere = new THREE.HemisphereLight(0x87ceeb, 0x555555, 0.5);
+    this.sun = new THREE.DirectionalLight(0xffffff, 2.0);
+    this.ambient = new THREE.AmbientLight(0x606080, 0.8);
+    this.hemisphere = new THREE.HemisphereLight(0x87ceeb, 0x8B7355, 0.7);
   }
 
   async initialize(): Promise<void> {
@@ -193,16 +193,16 @@ export class WeatherSystem {
   }
 
   private setupAtmosphericFog(): void {
-    // NYC-style atmospheric haze - layered fog system
+    // NYC-style atmospheric haze - light fog for depth without darkening
     // Use exponential fog for natural falloff
-    const baseVisibility = NYC_ATMOSPHERIC.visibility.hazy;
-    const fogDensity = 1 / (baseVisibility * 100); // Convert km to fog density
+    const baseVisibility = NYC_ATMOSPHERIC.visibility.clear; // Use clear visibility
+    const fogDensity = 1 / (baseVisibility * 200); // Much lighter fog
 
-    this.atmosphericFog = new THREE.FogExp2(0x8899aa, fogDensity);
+    this.atmosphericFog = new THREE.FogExp2(0xAABBCC, fogDensity); // Lighter blue-gray
     this.game.scene.fog = this.atmosphericFog;
 
     // Also create a linear fog for distant objects
-    this.distanceFog = new THREE.Fog(0x8899aa, 100, 800);
+    this.distanceFog = new THREE.Fog(0xAABBCC, 200, 1500); // Push fog further
   }
 
   private updateAtmosphericFog(): void {
@@ -630,19 +630,24 @@ export class WeatherSystem {
         material.uniforms.horizonColor.value.setHex(0xffaa66);
         material.uniforms.sunColor.value.setHex(0xffaa44);
       } else if (isSunset) {
+        // Lofi sunset - warm pink/purple/orange tones
         const t = (time - 17) / 3;
         material.uniforms.topColor.value.lerpColors(
-          new THREE.Color(0x4466aa),
-          new THREE.Color(0x111133),
+          new THREE.Color(0x5544aa), // Purple-blue
+          new THREE.Color(0x1a1133), // Deep purple night
           t
         );
         material.uniforms.bottomColor.value.lerpColors(
-          new THREE.Color(0xff5533),
-          new THREE.Color(0x221122),
+          new THREE.Color(0xff6688), // Pink-orange
+          new THREE.Color(0x331122), // Deep magenta
           t
         );
-        material.uniforms.horizonColor.value.setHex(0xff6644);
-        material.uniforms.sunColor.value.setHex(0xff4422);
+        material.uniforms.horizonColor.value.lerpColors(
+          new THREE.Color(0xff8866), // Warm orange
+          new THREE.Color(0x663355), // Purple haze
+          t * 0.7
+        );
+        material.uniforms.sunColor.value.setHex(0xff7744);
       } else {
         // Night - NYC light pollution creates orange-purple horizon glow
         material.uniforms.topColor.value.setHex(0x0a0a1a); // Deep blue-black sky
@@ -664,15 +669,15 @@ export class WeatherSystem {
     this.ambient.intensity = ambientIntensity;
 
     // Update hemisphere light colors with NYC characteristics
-    if (isDaytime) {
+    if (isDaytime && !isSunset) {
       this.hemisphere.color.setHex(0x87ceeb); // Sky blue
       this.hemisphere.groundColor.setHex(0x556655); // Green-ish ground bounce
       this.hemisphere.intensity = 0.5;
     } else if (isSunset) {
-      // Golden hour hemisphere lighting
-      this.hemisphere.color.setHex(0xff9966);
-      this.hemisphere.groundColor.setHex(0x443322);
-      this.hemisphere.intensity = 0.6;
+      // Lofi golden hour - warm pink/orange lighting
+      this.hemisphere.color.setHex(0xff8877); // Warm pink-orange sky
+      this.hemisphere.groundColor.setHex(0x554433); // Warm amber ground
+      this.hemisphere.intensity = 0.7;
     } else {
       // Night - orange tint from street lights, purple from sky
       this.hemisphere.color.setHex(0x1a1a33); // Dark purple sky

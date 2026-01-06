@@ -9,70 +9,70 @@ const VEHICLE_CONFIGS: VehicleConfig[] = [
     name: 'Infernus',
     type: 'car',
     maxSpeed: 220,
-    acceleration: 45, // Fast sports car
+    acceleration: 45,
     braking: 60,
     handling: 0.85,
     mass: 1200,
     health: 1000,
     seats: 2,
     hasRadio: true,
-    color: 0xff0000
+    color: 0xE60012 // Ferrari red
   },
   {
     id: 'sedan',
     name: 'Admiral',
     type: 'car',
     maxSpeed: 180,
-    acceleration: 32, // Decent acceleration
+    acceleration: 32,
     braking: 45,
     handling: 0.7,
     mass: 1400,
     health: 1200,
     seats: 4,
     hasRadio: true,
-    color: 0x333333
+    color: 0x1C1C1C // Obsidian black
   },
   {
     id: 'muscle_car',
     name: 'Stallion',
     type: 'car',
     maxSpeed: 200,
-    acceleration: 40, // Powerful muscle car
+    acceleration: 40,
     braking: 50,
     handling: 0.6,
     mass: 1500,
     health: 1100,
     seats: 2,
     hasRadio: true,
-    color: 0x0066ff
+    color: 0x0047AB // Cobalt blue
   },
   {
     id: 'truck',
     name: 'Mule',
     type: 'truck',
     maxSpeed: 140,
-    acceleration: 20, // Heavy but still responsive
+    acceleration: 20,
     braking: 35,
     handling: 0.4,
     mass: 4000,
     health: 2000,
     seats: 2,
     hasRadio: true,
-    color: 0xcccccc
+    color: 0xF5F5F5 // White
   },
   {
     id: 'motorcycle',
     name: 'PCJ-600',
     type: 'motorcycle',
     maxSpeed: 240,
-    acceleration: 55, // Fastest acceleration
+    acceleration: 55,
     braking: 70,
     handling: 0.95,
     mass: 250,
     health: 500,
     seats: 2,
     hasRadio: false,
-    color: 0x111111
+    color: 0xFF6B00 // Orange
   }
 ];
 
@@ -158,31 +158,37 @@ export class VehicleManager {
     const group = new THREE.Group();
     const dim = this.getVehicleDimensions(config.type);
 
-    // Materials
+    // Premium car paint material with clearcoat effect
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color: config.color,
-      roughness: 0.25,
-      metalness: 0.85
+      roughness: 0.15,
+      metalness: 0.9,
+      envMapIntensity: 1.2
     });
 
+    // Tinted glass with realistic transparency
     const glassMaterial = new THREE.MeshStandardMaterial({
-      color: 0x88ccff,
-      roughness: 0.05,
-      metalness: 0.3,
+      color: 0x446688,
+      roughness: 0.02,
+      metalness: 0.1,
       transparent: true,
-      opacity: 0.4
+      opacity: 0.35,
+      envMapIntensity: 0.8
     });
 
+    // High polish chrome
     const chromeMaterial = new THREE.MeshStandardMaterial({
-      color: 0xcccccc,
-      roughness: 0.1,
-      metalness: 1.0
+      color: 0xeeeeee,
+      roughness: 0.05,
+      metalness: 1.0,
+      envMapIntensity: 1.5
     });
 
+    // Matte black trim (carbon fiber look)
     const blackTrimMaterial = new THREE.MeshStandardMaterial({
-      color: 0x111111,
-      roughness: 0.5,
-      metalness: 0.3
+      color: 0x1a1a1a,
+      roughness: 0.4,
+      metalness: 0.5
     });
 
     if (config.type === 'motorcycle') {
@@ -212,44 +218,233 @@ export class VehicleManager {
     return group;
   }
 
-  private createDetailedWheel(radius: number): THREE.Group {
+  private createDetailedWheel(radius: number, isLuxury: boolean = true): THREE.Group {
     const wheelGroup = new THREE.Group();
 
-    // Tire
-    const tireGeometry = new THREE.TorusGeometry(radius, radius * 0.35, 16, 32);
+    // Tire with realistic tread
+    const tireGeometry = new THREE.TorusGeometry(radius, radius * 0.32, 24, 48);
     const tireMaterial = new THREE.MeshStandardMaterial({
       color: 0x1a1a1a,
-      roughness: 0.9,
-      metalness: 0.1
+      roughness: 0.95,
+      metalness: 0.05
     });
     const tire = new THREE.Mesh(tireGeometry, tireMaterial);
     tire.rotation.y = Math.PI / 2;
     tire.castShadow = true;
     wheelGroup.add(tire);
 
-    // Rim
-    const rimGeometry = new THREE.CylinderGeometry(radius * 0.65, radius * 0.65, radius * 0.3, 16);
-    const rimMaterial = new THREE.MeshStandardMaterial({
-      color: 0x888888,
-      roughness: 0.2,
-      metalness: 0.9
+    // Tire sidewall text effect (subtle ring)
+    const sidewallGeometry = new THREE.TorusGeometry(radius * 0.85, radius * 0.03, 8, 48);
+    const sidewallMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2a2a2a,
+      roughness: 0.8
     });
-    const rim = new THREE.Mesh(rimGeometry, rimMaterial);
-    rim.rotation.z = Math.PI / 2;
-    wheelGroup.add(rim);
+    const sidewall = new THREE.Mesh(sidewallGeometry, sidewallMaterial);
+    sidewall.rotation.y = Math.PI / 2;
+    sidewall.position.x = radius * 0.15;
+    wheelGroup.add(sidewall);
 
-    // Hub cap
-    const hubGeometry = new THREE.CylinderGeometry(radius * 0.2, radius * 0.2, radius * 0.35, 8);
-    const hubMaterial = new THREE.MeshStandardMaterial({
-      color: 0xaaaaaa,
+    // Chrome/alloy rim outer ring
+    const rimOuterGeometry = new THREE.TorusGeometry(radius * 0.68, radius * 0.08, 16, 48);
+    const chromeMaterial = new THREE.MeshStandardMaterial({
+      color: 0xE8E8E8,
+      roughness: 0.1,
+      metalness: 1.0,
+      envMapIntensity: 1.5
+    });
+    const rimOuter = new THREE.Mesh(rimOuterGeometry, chromeMaterial);
+    rimOuter.rotation.y = Math.PI / 2;
+    wheelGroup.add(rimOuter);
+
+    // Rim face (disk)
+    const rimFaceGeometry = new THREE.CylinderGeometry(radius * 0.62, radius * 0.62, radius * 0.08, 32);
+    const rimFaceMaterial = new THREE.MeshStandardMaterial({
+      color: 0xC0C0C0,
+      roughness: 0.2,
+      metalness: 0.95
+    });
+    const rimFace = new THREE.Mesh(rimFaceGeometry, rimFaceMaterial);
+    rimFace.rotation.z = Math.PI / 2;
+    wheelGroup.add(rimFace);
+
+    // Multi-spoke design (5 or 7 double spokes)
+    const spokeCount = isLuxury ? 5 : 7;
+    const spokeMaterial = new THREE.MeshStandardMaterial({
+      color: 0xD0D0D0,
       roughness: 0.15,
+      metalness: 0.98
+    });
+
+    for (let i = 0; i < spokeCount; i++) {
+      const angle = (i / spokeCount) * Math.PI * 2;
+
+      // Main spoke
+      const spokeGeometry = new THREE.BoxGeometry(radius * 0.5, radius * 0.12, radius * 0.04);
+      const spoke = new THREE.Mesh(spokeGeometry, spokeMaterial);
+      spoke.position.set(0, Math.sin(angle) * radius * 0.35, Math.cos(angle) * radius * 0.35);
+      spoke.rotation.x = angle;
+      wheelGroup.add(spoke);
+
+      // Secondary spoke (Y-spoke design)
+      if (isLuxury) {
+        const angle2 = angle + Math.PI / (spokeCount * 2);
+        const spoke2Geometry = new THREE.BoxGeometry(radius * 0.35, radius * 0.06, radius * 0.03);
+        const spoke2 = new THREE.Mesh(spoke2Geometry, spokeMaterial);
+        spoke2.position.set(radius * 0.08, Math.sin(angle2) * radius * 0.28, Math.cos(angle2) * radius * 0.28);
+        spoke2.rotation.x = angle2;
+        wheelGroup.add(spoke2);
+      }
+    }
+
+    // Center hub with logo indent
+    const hubGeometry = new THREE.CylinderGeometry(radius * 0.18, radius * 0.2, radius * 0.12, 24);
+    const hubMaterial = new THREE.MeshStandardMaterial({
+      color: 0xF0F0F0,
+      roughness: 0.1,
       metalness: 1.0
     });
     const hub = new THREE.Mesh(hubGeometry, hubMaterial);
     hub.rotation.z = Math.PI / 2;
+    hub.position.x = radius * 0.02;
     wheelGroup.add(hub);
 
+    // Center cap detail
+    const capGeometry = new THREE.CylinderGeometry(radius * 0.12, radius * 0.12, radius * 0.06, 16);
+    const capMaterial = new THREE.MeshStandardMaterial({
+      color: 0x333333,
+      roughness: 0.3,
+      metalness: 0.8
+    });
+    const cap = new THREE.Mesh(capGeometry, capMaterial);
+    cap.rotation.z = Math.PI / 2;
+    cap.position.x = radius * 0.08;
+    wheelGroup.add(cap);
+
+    // Brake caliper (visible through spokes) - red for sports feel
+    const caliperGeometry = new THREE.BoxGeometry(radius * 0.08, radius * 0.2, radius * 0.35);
+    const caliperMaterial = new THREE.MeshStandardMaterial({
+      color: 0xCC0000,
+      roughness: 0.4,
+      metalness: 0.6
+    });
+    const caliper = new THREE.Mesh(caliperGeometry, caliperMaterial);
+    caliper.position.set(-radius * 0.15, radius * 0.15, 0);
+    wheelGroup.add(caliper);
+
+    // Brake rotor (disk)
+    const rotorGeometry = new THREE.CylinderGeometry(radius * 0.45, radius * 0.45, radius * 0.03, 32);
+    const rotorMaterial = new THREE.MeshStandardMaterial({
+      color: 0x666666,
+      roughness: 0.5,
+      metalness: 0.9
+    });
+    const rotor = new THREE.Mesh(rotorGeometry, rotorMaterial);
+    rotor.rotation.z = Math.PI / 2;
+    rotor.position.x = -radius * 0.1;
+    wheelGroup.add(rotor);
+
     return wheelGroup;
+  }
+
+  // ==================== INTERIOR ====================
+  private createInterior(
+    group: THREE.Group,
+    dim: { width: number; height: number; length: number },
+    isSportsCar: boolean = false
+  ): void {
+    // Interior materials
+    const leatherMaterial = new THREE.MeshStandardMaterial({
+      color: isSportsCar ? 0x1a1a1a : 0x3a3030,
+      roughness: 0.7,
+      metalness: 0.1
+    });
+    const dashMaterial = new THREE.MeshStandardMaterial({
+      color: 0x222222,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const carbonMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2a2a2a,
+      roughness: 0.3,
+      metalness: 0.7
+    });
+
+    // Dashboard
+    const dashGeom = new THREE.BoxGeometry(dim.width * 0.75, dim.height * 0.08, dim.length * 0.15);
+    const dash = new THREE.Mesh(dashGeom, dashMaterial);
+    dash.position.set(0, dim.height * 0.38, dim.length * 0.05);
+    group.add(dash);
+
+    // Instrument cluster (glowing)
+    const clusterMaterial = new THREE.MeshStandardMaterial({
+      color: 0x00ff88,
+      emissive: 0x00ff44,
+      emissiveIntensity: 0.3,
+      roughness: 0.2
+    });
+    const clusterGeom = new THREE.BoxGeometry(dim.width * 0.2, dim.height * 0.05, 0.02);
+    const cluster = new THREE.Mesh(clusterGeom, clusterMaterial);
+    cluster.position.set(0, dim.height * 0.42, dim.length * 0.1);
+    cluster.rotation.x = -0.3;
+    group.add(cluster);
+
+    // Center console screen
+    const screenMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2244aa,
+      emissive: 0x112244,
+      emissiveIntensity: 0.5,
+      roughness: 0.1
+    });
+    const screenGeom = new THREE.BoxGeometry(dim.width * 0.15, dim.height * 0.08, 0.01);
+    const screen = new THREE.Mesh(screenGeom, screenMaterial);
+    screen.position.set(0, dim.height * 0.44, dim.length * 0.0);
+    screen.rotation.x = -0.4;
+    group.add(screen);
+
+    // Steering wheel
+    const wheelMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1a1a1a,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const steeringRing = new THREE.TorusGeometry(dim.width * 0.08, 0.015, 12, 32);
+    const steering = new THREE.Mesh(steeringRing, wheelMaterial);
+    steering.position.set(0, dim.height * 0.42, dim.length * 0.08);
+    steering.rotation.x = -0.5;
+    group.add(steering);
+
+    // Steering wheel center
+    const steeringCenter = new THREE.CylinderGeometry(dim.width * 0.025, dim.width * 0.025, 0.02, 16);
+    const centerMesh = new THREE.Mesh(steeringCenter, carbonMaterial);
+    centerMesh.position.set(0, dim.height * 0.42, dim.length * 0.08);
+    centerMesh.rotation.x = Math.PI / 2 - 0.5;
+    group.add(centerMesh);
+
+    // Front seats
+    const seatGeom = new THREE.BoxGeometry(dim.width * 0.28, dim.height * 0.18, dim.length * 0.18);
+    [-1, 1].forEach(side => {
+      const seat = new THREE.Mesh(seatGeom, leatherMaterial);
+      seat.position.set(side * dim.width * 0.22, dim.height * 0.35, -dim.length * 0.02);
+      group.add(seat);
+
+      // Seat headrest
+      const headrestGeom = new THREE.BoxGeometry(dim.width * 0.12, dim.height * 0.1, dim.length * 0.05);
+      const headrest = new THREE.Mesh(headrestGeom, leatherMaterial);
+      headrest.position.set(side * dim.width * 0.22, dim.height * 0.52, -dim.length * 0.06);
+      group.add(headrest);
+    });
+
+    // Gear shift
+    const shiftGeom = new THREE.CylinderGeometry(0.02, 0.025, 0.08, 12);
+    const shift = new THREE.Mesh(shiftGeom, carbonMaterial);
+    shift.position.set(0, dim.height * 0.36, -dim.length * 0.02);
+    group.add(shift);
+
+    // Center console
+    const consoleGeom = new THREE.BoxGeometry(dim.width * 0.12, dim.height * 0.08, dim.length * 0.25);
+    const console = new THREE.Mesh(consoleGeom, dashMaterial);
+    console.position.set(0, dim.height * 0.32, -dim.length * 0.02);
+    group.add(console);
   }
 
   // ==================== SPORTS CAR ====================
@@ -426,6 +621,9 @@ export class VehicleManager {
       handle.position.set(side * dim.width * 0.49, dim.height * 0.32, -dim.length * 0.02);
       group.add(handle);
     });
+
+    // Add interior
+    this.createInterior(group, dim, true);
   }
 
   // ==================== MUSCLE CAR ====================
@@ -618,6 +816,9 @@ export class VehicleManager {
       handle.position.set(side * dim.width * 0.5, dim.height * 0.36, 0);
       group.add(handle);
     });
+
+    // Add interior
+    this.createInterior(group, dim, false);
   }
 
   // ==================== SEDAN ====================
@@ -795,6 +996,9 @@ export class VehicleManager {
     const antenna = new THREE.Mesh(antennaGeom, antennaMaterial);
     antenna.position.set(-dim.width * 0.3, dim.height * 0.88, -dim.length * 0.15);
     group.add(antenna);
+
+    // Add interior
+    this.createInterior(group, dim, false);
   }
 
   private createMotorcycleMesh(
@@ -968,19 +1172,30 @@ export class VehicleManager {
     wheelsToRemove.forEach(wheel => vehicle.mesh.remove(wheel));
   }
 
-  private createVehicleLights(mesh: THREE.Group, config: VehicleConfig): Vehicle['lights'] {
+  private createVehicleLights(mesh: THREE.Group, config: VehicleConfig, isPlayerVehicle: boolean = false): Vehicle['lights'] {
+    // PERFORMANCE: Only create actual lights for player's vehicle to avoid WebGL uniform limits
+    // Traffic vehicles use emissive materials only (no PointLights)
+    if (!isPlayerVehicle) {
+      return {
+        headlights: [],
+        taillights: [],
+        brakeLights: [],
+        indicators: []
+      };
+    }
+
     const dimensions = this.getVehicleDimensions(config.type);
 
-    // Use simpler PointLights instead of SpotLights to reduce shader complexity
-    const headlightLeft = new THREE.PointLight(0xffffcc, 1, 20);
+    // Player vehicle gets actual lights
+    const headlightLeft = new THREE.PointLight(0xffffcc, 1, 15);
     headlightLeft.position.set(-0.6, 0.6, dimensions.length / 2 + 0.5);
     mesh.add(headlightLeft);
 
-    const headlightRight = new THREE.PointLight(0xffffcc, 1, 20);
+    const headlightRight = new THREE.PointLight(0xffffcc, 1, 15);
     headlightRight.position.set(0.6, 0.6, dimensions.length / 2 + 0.5);
     mesh.add(headlightRight);
 
-    // Single taillight for simplicity
+    // Single taillight
     const taillightLeft = new THREE.PointLight(0xff0000, 0.3, 5);
     taillightLeft.position.set(0, 0.5, -dimensions.length / 2);
     mesh.add(taillightLeft);

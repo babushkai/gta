@@ -109,14 +109,14 @@ export class Renderer {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const visualEffects: any[] = [];
 
-    // Enhanced bloom with better settings
+    // Lofi bloom - soft warm glow for neon and lights
     if (this.config.bloom) {
       this.bloomEffect = new BloomEffect({
-        intensity: 0.6,
-        luminanceThreshold: 0.7,
-        luminanceSmoothing: 0.05,
+        intensity: 0.8,
+        luminanceThreshold: 0.5,
+        luminanceSmoothing: 0.15,
         mipmapBlur: true,
-        radius: 0.85
+        radius: 0.9
       });
       visualEffects.push(this.bloomEffect);
     }
@@ -140,10 +140,10 @@ export class Renderer {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const finalEffects: any[] = [];
 
-    // Vignette for cinematic look
+    // Vignette for lofi cinematic look
     this.vignetteEffect = new VignetteEffect({
-      offset: 0.3,
-      darkness: 0.5
+      offset: 0.35,
+      darkness: 0.6
     });
     finalEffects.push(this.vignetteEffect);
 

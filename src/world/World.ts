@@ -21,22 +21,22 @@ interface StreetLight {
   position: THREE.Vector3;
 }
 
-// NYC Color palettes - more weathered, gritty colors
+// NYC Color palettes - warm, vibrant NYC character
 const NYC_PALETTES = {
-  brownstone: [0x7A3D10, 0x8E4A25, 0x5B3520, 0x6D3C22, 0x4C2B15], // Darker, weathered brown
-  artdeco: [0xC4B498, 0xB9A886, 0xA8987A, 0x8C7C60, 0x7B6345], // More aged cream/stone
-  prewar: [0xBD7535, 0xCEA877, 0xC2A47C, 0xB4934A, 0xA8760B], // Aged brick/stone
-  modern: [0x3A3A3A, 0x4A4A4A, 0x5A5A5A, 0x2A2A2A, 0x1A1A1A], // Darker concrete
-  glass_tower: [0x1E3A5F, 0x2E4A6F, 0x3E5A7F, 0x4E6A8F, 0x1E2A4F],
-  warehouse: [0x6B0000, 0x852222, 0x921A1A, 0xAD4C4C, 0x600000] // Aged brick red
+  brownstone: [0xB87333, 0xCD853F, 0xD2691E, 0xCC7722, 0xC19A6B], // Warm brownstone
+  artdeco: [0xE8DCC8, 0xDDD0B8, 0xCCC0A8, 0xD5C8B5, 0xE0D4C0], // Cream/stone
+  prewar: [0xCC5500, 0xE07020, 0xD4652F, 0xC87530, 0xE08050], // Warm brick/terracotta
+  modern: [0x808080, 0x909090, 0xA0A0A0, 0x787878, 0x888888], // Light gray concrete
+  glass_tower: [0x4682B4, 0x5F9EA0, 0x6495ED, 0x708090, 0x87CEEB], // Blue glass
+  warehouse: [0xA52A2A, 0xB5524A, 0xC06050, 0xB84040, 0xA04030] // Red brick
 };
 
-// NYC grime/weathering colors
+// NYC grime/weathering colors - subtle accents
 const NYC_GRIME = {
-  waterStain: 0x3A3A3A,
-  soot: 0x1A1A1A,
-  rust: 0x8B4513,
-  mold: 0x2F4F2F,
+  waterStain: 0x606060,
+  soot: 0x505050,
+  rust: 0xB87333,
+  mold: 0x4A6A4A,
   graffiti: [0xFF1493, 0x00FF00, 0xFF6600, 0x00FFFF, 0xFFFF00, 0x9400D3]
 };
 
@@ -794,39 +794,41 @@ export class World {
   }
 
   private createBuildings(): void {
-    // NYC-style city layout with distinct districts
+    // NYC-style city layout with distinct districts - EXPANDED MAP
     this.createMidtownDistrict();      // Glass towers and modern buildings
     this.createDowntownDistrict();     // Art Deco and prewar buildings
     this.createResidentialDistrict();  // Brownstones and apartments
     this.createIndustrialDistrict();   // Warehouses and factories
+    this.createUptownDistrict();       // High-end residential and cultural
+    this.createWaterfrontDistrict();   // Piers and waterfront buildings
   }
 
   private createMidtownDistrict(): void {
-    // Center area - tall glass skyscrapers like Midtown Manhattan
-    for (let x = -2; x <= 2; x++) {
-      for (let z = -2; z <= 2; z++) {
+    // Center area - tall glass skyscrapers like Midtown Manhattan - EXPANDED
+    for (let x = -4; x <= 4; x++) {
+      for (let z = -4; z <= 4; z++) {
         if (x === 0 && z === 0) continue;
 
-        const baseX = x * 60;
-        const baseZ = z * 60;
+        const baseX = x * 55;
+        const baseZ = z * 55;
 
         // Main tower
-        const height = 40 + Math.random() * 60;
+        const height = 35 + Math.random() * 70;
         this.createNYCBuilding(
           new THREE.Vector3(baseX, 0, baseZ),
-          12 + Math.random() * 8,
+          10 + Math.random() * 8,
           height,
-          12 + Math.random() * 8,
+          10 + Math.random() * 8,
           Math.random() > 0.3 ? 'glass_tower' : 'modern'
         );
 
         // Smaller surrounding buildings
-        if (Math.random() > 0.5) {
+        if (Math.random() > 0.4) {
           this.createNYCBuilding(
-            new THREE.Vector3(baseX + 18, 0, baseZ),
-            8 + Math.random() * 4,
-            20 + Math.random() * 25,
-            8 + Math.random() * 4,
+            new THREE.Vector3(baseX + 16, 0, baseZ),
+            7 + Math.random() * 4,
+            18 + Math.random() * 25,
+            7 + Math.random() * 4,
             'modern'
           );
         }
@@ -836,8 +838,8 @@ export class World {
 
   private createDowntownDistrict(): void {
     // South area - Art Deco buildings like Financial District
-    for (let x = -3; x <= 3; x++) {
-      for (let z = 3; z <= 5; z++) {
+    for (let x = -4; x <= 4; x++) {
+      for (let z = -8; z <= -5; z++) {
         const baseX = x * 55;
         const baseZ = z * 55;
 
@@ -855,7 +857,7 @@ export class World {
   private createResidentialDistrict(): void {
     // West side - Brownstones and apartments like Brooklyn/Upper West Side
     for (let x = -5; x <= -3; x++) {
-      for (let z = -4; z <= 4; z++) {
+      for (let z = -6; z <= 6; z++) {
         const baseX = x * 45;
         const baseZ = z * 45;
 
@@ -886,8 +888,8 @@ export class World {
 
   private createIndustrialDistrict(): void {
     // East side - Warehouses like DUMBO/Red Hook
-    for (let x = 3; x <= 5; x++) {
-      for (let z = -4; z <= 4; z++) {
+    for (let x = 4; x <= 7; x++) {
+      for (let z = -6; z <= 6; z++) {
         const baseX = x * 50;
         const baseZ = z * 50;
 
@@ -897,6 +899,46 @@ export class World {
           8 + Math.random() * 12,
           25 + Math.random() * 15,
           'warehouse'
+        );
+      }
+    }
+  }
+
+  private createUptownDistrict(): void {
+    // North side - High-end residential like Upper East Side
+    for (let z = 5; z <= 8; z++) {
+      for (let x = -3; x <= 3; x++) {
+        const baseX = x * 50;
+        const baseZ = z * 50;
+
+        // Mix of prewar luxury and modern condos
+        const style = Math.random() > 0.4 ? 'prewar' : 'modern';
+        this.createNYCBuilding(
+          new THREE.Vector3(baseX, 0, baseZ),
+          18 + Math.random() * 12,
+          25 + Math.random() * 40,
+          18 + Math.random() * 12,
+          style
+        );
+      }
+    }
+  }
+
+  private createWaterfrontDistrict(): void {
+    // West side - Waterfront like Hudson Yards / West Side Highway
+    for (let x = -6; x <= -4; x++) {
+      for (let z = -3; z <= 5; z++) {
+        const baseX = x * 50;
+        const baseZ = z * 50;
+
+        // Mix of warehouses converted to lofts and modern glass towers
+        const style = Math.random() > 0.5 ? 'warehouse' : 'glass_tower';
+        this.createNYCBuilding(
+          new THREE.Vector3(baseX, 0, baseZ),
+          22 + Math.random() * 15,
+          15 + Math.random() * 35,
+          22 + Math.random() * 15,
+          style
         );
       }
     }
@@ -1138,6 +1180,11 @@ export class World {
 
     // Rooftop mechanicals
     this.addRooftopMechanicals(group, width, height, depth);
+
+    // Neon signs on ground level for lofi vibe
+    if (Math.random() > 0.5) {
+      this.addNeonSign(group, width, height, depth);
+    }
   }
 
   // Glass curtain wall tower
@@ -1271,6 +1318,73 @@ export class World {
       dumpster.position.set(width / 2 - 2, -height / 2 + 0.75, depth / 2 + 3);
       group.add(dumpster);
     }
+
+    // Neon signs for lofi vibe
+    if (Math.random() > 0.4) {
+      this.addNeonSign(group, width, height, depth);
+    }
+  }
+
+  // Lofi neon signs for city atmosphere
+  private addNeonSign(group: THREE.Group, width: number, height: number, depth: number): void {
+    // Neon color palette - lofi vibes
+    const neonColors = [
+      { color: 0xff6b9d, emissive: 0xff3366 }, // Pink
+      { color: 0x00ffff, emissive: 0x00cccc }, // Cyan
+      { color: 0xff9500, emissive: 0xff6600 }, // Orange
+      { color: 0xb366ff, emissive: 0x9933ff }, // Purple
+      { color: 0x66ff66, emissive: 0x33cc33 }, // Green
+      { color: 0xffff66, emissive: 0xcccc00 }, // Yellow
+    ];
+
+    const palette = neonColors[Math.floor(Math.random() * neonColors.length)];
+
+    // Main neon bar (horizontal sign)
+    const signWidth = Math.min(width * 0.6, 8);
+    const signMaterial = new THREE.MeshStandardMaterial({
+      color: palette.color,
+      emissive: palette.emissive,
+      emissiveIntensity: 1.5,
+      roughness: 0.2,
+      metalness: 0.3
+    });
+
+    // Horizontal neon bar
+    const signGeom = new THREE.BoxGeometry(signWidth, 0.3, 0.1);
+    const sign = new THREE.Mesh(signGeom, signMaterial);
+    sign.position.set(0, height * 0.3, depth / 2 + 0.15);
+    group.add(sign);
+
+    // Add a second bar below for "OPEN" style look
+    if (Math.random() > 0.5) {
+      const sign2 = new THREE.Mesh(new THREE.BoxGeometry(signWidth * 0.5, 0.25, 0.1), signMaterial);
+      sign2.position.set(0, height * 0.3 - 0.6, depth / 2 + 0.15);
+      group.add(sign2);
+    }
+
+    // Vertical accent bars on sides
+    if (Math.random() > 0.6) {
+      const palette2 = neonColors[Math.floor(Math.random() * neonColors.length)];
+      const accentMaterial = new THREE.MeshStandardMaterial({
+        color: palette2.color,
+        emissive: palette2.emissive,
+        emissiveIntensity: 1.2,
+        roughness: 0.2
+      });
+
+      const accentGeom = new THREE.BoxGeometry(0.15, 2, 0.08);
+      [-1, 1].forEach(side => {
+        const accent = new THREE.Mesh(accentGeom, accentMaterial);
+        accent.position.set(side * (signWidth / 2 + 0.3), height * 0.3 - 0.5, depth / 2 + 0.15);
+        group.add(accent);
+      });
+    }
+
+    // Backing plate (dark)
+    const backingMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
+    const backing = new THREE.Mesh(new THREE.BoxGeometry(signWidth + 1, 1.5, 0.05), backingMat);
+    backing.position.set(0, height * 0.3 - 0.3, depth / 2 + 0.05);
+    group.add(backing);
   }
 
   // Window creation methods for different styles
@@ -1621,16 +1735,18 @@ export class World {
   private createStreetLights(): void {
     const gridSize = 50;
 
-    // Reduced density - only at intersections to avoid shader uniform limits
-    for (let x = -3; x <= 3; x++) {
-      for (let z = -3; z <= 3; z++) {
-        // Only place lights at every other intersection
-        if ((x + z) % 2 === 0) {
-          const pos = new THREE.Vector3(x * gridSize + 6, 0, z * gridSize + 6);
-          this.createStreetLight(pos);
-        }
-      }
-    }
+    // HEAVILY reduced - only 4 lights near player spawn to avoid WebGL uniform limits
+    const lightPositions = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: 0, z: 1 },
+      { x: -1, z: -1 }
+    ];
+
+    lightPositions.forEach(({ x, z }) => {
+      const pos = new THREE.Vector3(x * gridSize + 6, 0, z * gridSize + 6);
+      this.createStreetLight(pos);
+    });
   }
 
   private createStreetLight(position: THREE.Vector3): StreetLight {
@@ -2036,13 +2152,17 @@ export class World {
 
   private updateStreetLights(): void {
     const timeOfDay = this.game.weather.getTimeOfDay();
+    const isSunset = timeOfDay >= 17 && timeOfDay < 20;
     const isNight = timeOfDay < 6 || timeOfDay > 19;
+    const lightsOn = isNight || isSunset; // Turn on during sunset for lofi vibe
 
     this.streetLights.forEach(streetLight => {
-      streetLight.light.intensity = isNight ? 0.8 : 0;
+      // Warmer amber glow for lofi aesthetic
+      streetLight.light.intensity = lightsOn ? 1.0 : 0;
+      streetLight.light.color.setHex(isSunset ? 0xffaa66 : 0xffcc88); // Warmer during sunset
       const lamp = streetLight.mesh.children.find(c => c instanceof THREE.Mesh && (c.material as THREE.MeshBasicMaterial).color) as THREE.Mesh;
       if (lamp) {
-        (lamp.material as THREE.MeshBasicMaterial).color.setHex(isNight ? 0xffffaa : 0x888888);
+        (lamp.material as THREE.MeshBasicMaterial).color.setHex(lightsOn ? 0xffcc88 : 0x888888);
       }
     });
   }
