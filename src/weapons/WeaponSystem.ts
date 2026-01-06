@@ -337,9 +337,22 @@ export class WeaponSystem {
     this.createMuzzleFlash();
   }
 
+  private muzzleFlashMesh: THREE.Mesh | null = null;
+
   private createMuzzleFlash(): void {
-    this.muzzleFlash = new THREE.PointLight(0xffaa00, 0, 10);
+    this.muzzleFlash = new THREE.PointLight(0xffaa00, 0, 15);
     this.muzzleFlash.castShadow = false;
+
+    // Create visible muzzle flash sprite for bloom effect
+    const flashGeometry = new THREE.PlaneGeometry(0.4, 0.4);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffcc44,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending
+    });
+    this.muzzleFlashMesh = new THREE.Mesh(flashGeometry, flashMaterial);
   }
 
   addWeapon(weaponId: string, ammo?: number): Weapon | null {
@@ -1102,39 +1115,71 @@ export class WeaponSystem {
   }
 
   private createImpactEffect(position: THREE.Vector3): void {
-    // Create spark particles
-    const particleCount = 5;
-    const particles: THREE.Mesh[] = [];
+    // Enhanced spark particles for lofi vibe with bloom
+    const particleCount = 12;
 
+    // Create bright central flash
+    const flashGeom = new THREE.SphereGeometry(0.15, 8, 8);
+    const flashMat = new THREE.MeshBasicMaterial({
+      color: 0xffcc66,
+      transparent: true,
+      opacity: 1,
+      blending: THREE.AdditiveBlending
+    });
+    const flash = new THREE.Mesh(flashGeom, flashMat);
+    flash.position.copy(position);
+    this.game.scene.add(flash);
+
+    // Animate flash
+    let flashFrame = 0;
+    const animateFlash = () => {
+      flashFrame++;
+      flash.scale.multiplyScalar(1.15);
+      flashMat.opacity = 1 - flashFrame / 8;
+      if (flashFrame < 8) {
+        requestAnimationFrame(animateFlash);
+      } else {
+        this.game.scene.remove(flash);
+        flashGeom.dispose();
+        flashMat.dispose();
+      }
+    };
+    animateFlash();
+
+    // Create spark particles
     for (let i = 0; i < particleCount; i++) {
-      const particleGeom = new THREE.SphereGeometry(0.02, 4, 4);
+      const size = 0.015 + Math.random() * 0.02;
+      const particleGeom = new THREE.SphereGeometry(size, 4, 4);
+
+      // Warmer colors for lofi aesthetic
+      const colors = [0xffaa44, 0xffcc66, 0xff8833, 0xffdd88];
       const particleMat = new THREE.MeshBasicMaterial({
-        color: 0xffaa00,
+        color: colors[Math.floor(Math.random() * colors.length)],
         transparent: true,
-        opacity: 1
+        opacity: 1,
+        blending: THREE.AdditiveBlending
       });
       const particle = new THREE.Mesh(particleGeom, particleMat);
       particle.position.copy(position);
 
-      // Random velocity
+      // Random velocity - more spread
       const velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 2,
-        Math.random() * 2,
-        (Math.random() - 0.5) * 2
+        (Math.random() - 0.5) * 4,
+        Math.random() * 3 + 1,
+        (Math.random() - 0.5) * 4
       );
 
       this.game.scene.add(particle);
-      particles.push(particle);
 
       // Animate particle
       let frame = 0;
       const animate = () => {
         frame++;
-        particle.position.add(velocity.clone().multiplyScalar(0.02));
-        velocity.y -= 0.1;
-        particleMat.opacity = 1 - frame / 20;
+        particle.position.add(velocity.clone().multiplyScalar(0.015));
+        velocity.y -= 0.15; // Gravity
+        particleMat.opacity = 1 - frame / 25;
 
-        if (frame < 20) {
+        if (frame < 25) {
           requestAnimationFrame(animate);
         } else {
           this.game.scene.remove(particle);
@@ -1257,18 +1302,40 @@ export class WeaponSystem {
   private showMuzzleFlash(): void {
     if (!this.muzzleFlash || !this.weaponMesh) return;
 
-    // Position muzzle flash at weapon barrel
-    this.muzzleFlash.position.copy(this.weaponMesh.position);
-    this.muzzleFlash.position.z -= 0.5;
-    this.muzzleFlash.intensity = 3;
+    const player = this.game.player;
+    const muzzleOffset = this.getMuzzleOffset(this.getCurrentWeapon()!.config);
 
+    // Get muzzle position in world space
+    const muzzlePos = new THREE.Vector3();
+    this.weaponMesh.getWorldPosition(muzzlePos);
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(player.mesh.quaternion);
+    muzzlePos.add(forward.multiplyScalar(muzzleOffset));
+
+    // Position light at muzzle
+    this.muzzleFlash.position.copy(muzzlePos);
+    this.muzzleFlash.intensity = 5; // Brighter for bloom
+    this.muzzleFlash.color.setHex(0xffaa44);
     this.game.scene.add(this.muzzleFlash);
+
+    // Show visible muzzle flash mesh for bloom glow
+    if (this.muzzleFlashMesh) {
+      this.muzzleFlashMesh.position.copy(muzzlePos);
+      this.muzzleFlashMesh.lookAt(this.game.camera.position);
+      this.muzzleFlashMesh.scale.setScalar(0.8 + Math.random() * 0.4);
+      this.muzzleFlashMesh.rotation.z = Math.random() * Math.PI * 2;
+      (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 1;
+      this.game.scene.add(this.muzzleFlashMesh);
+    }
 
     // Fade out quickly
     setTimeout(() => {
       if (this.muzzleFlash) {
         this.muzzleFlash.intensity = 0;
         this.game.scene.remove(this.muzzleFlash);
+      }
+      if (this.muzzleFlashMesh) {
+        (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        this.game.scene.remove(this.muzzleFlashMesh);
       }
     }, 50);
   }

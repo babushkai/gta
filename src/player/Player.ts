@@ -821,12 +821,59 @@ export class Player {
       );
     }
 
-    gsap.to(document.body, {
-      backgroundColor: 'rgba(255, 0, 0, 0.3)',
-      duration: 0.1,
-      yoyo: true,
-      repeat: 1
+    // Enhanced damage feedback - lofi style with vignette pulse
+    this.showDamageEffect(amount);
+  }
+
+  private showDamageEffect(amount: number): void {
+    // Create damage overlay
+    let damageOverlay = document.getElementById('damage-overlay');
+    if (!damageOverlay) {
+      damageOverlay = document.createElement('div');
+      damageOverlay.id = 'damage-overlay';
+      damageOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 999;
+        background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 50, 50, 0.5) 100%);
+        opacity: 0;
+      `;
+      document.body.appendChild(damageOverlay);
+    }
+
+    // Intensity based on damage
+    const intensity = Math.min(amount / 30, 1);
+
+    // Flash effect
+    gsap.killTweensOf(damageOverlay);
+    gsap.to(damageOverlay, {
+      opacity: 0.3 + intensity * 0.4,
+      duration: 0.05,
+      onComplete: () => {
+        gsap.to(damageOverlay, {
+          opacity: 0,
+          duration: 0.4,
+          ease: 'power2.out'
+        });
+      }
     });
+
+    // Screen shake via renderer chromatic aberration
+    this.game.renderer.setChromaticAberration(intensity * 0.8);
+    setTimeout(() => {
+      this.game.renderer.setChromaticAberration(0);
+    }, 100);
+
+    // Vignette pulse
+    const currentDarkness = 0.6;
+    this.game.renderer.setVignetteDarkness(currentDarkness + intensity * 0.3);
+    setTimeout(() => {
+      this.game.renderer.setVignetteDarkness(currentDarkness);
+    }, 200);
   }
 
   heal(amount: number): void {
