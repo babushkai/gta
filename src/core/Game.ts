@@ -207,7 +207,8 @@ export class Game extends EventEmitter {
 
       this.updateLoadingProgress(90, 'Loading audio...');
       await this.audio.initialize();
-      this.audio.startBackgroundMusic();
+      // Background lofi music disabled for now
+      // this.audio.startBackgroundMusic();
 
       this.updateLoadingProgress(93, 'Setting up UI...');
       await this.ui.initialize();
