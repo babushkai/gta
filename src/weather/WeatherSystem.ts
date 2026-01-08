@@ -114,7 +114,7 @@ export class WeatherSystem {
       windDirection: new THREE.Vector3(1, 0, 0.5).normalize(),
       windSpeed: 5,
       temperature: 25,
-      timeOfDay: 18.5, // Golden hour - lofi sunset vibe
+      timeOfDay: 12, // Noon - clear blue sky
       sunPosition: new THREE.Vector3()
     };
 
