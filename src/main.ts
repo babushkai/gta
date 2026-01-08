@@ -35,7 +35,6 @@ async function startGame(playerName: string): Promise<void> {
         console.error('❌ Multiplayer connection error:', err);
       });
     }
-
   } catch (error) {
     console.error('❌ Failed to start game:', error);
     alert('Failed to start game. Check console for details.');

@@ -88,8 +88,9 @@ export class RapierVehiclePhysics {
     if (isMotorcycle) {
       chassisColliderDesc.setTranslation(0, -0.1, 0);
     } else {
-      // VERY low center of mass - key for preventing flips (GTA-style)
-      chassisColliderDesc.setTranslation(0, -0.5, 0);
+      // EXTREMELY low center of mass - key for preventing flips (GTA-style)
+      // -0.8 puts weight below the wheels, making rollover nearly impossible
+      chassisColliderDesc.setTranslation(0, -0.8, 0);
     }
 
     const collider = this.world.createCollider(chassisColliderDesc, chassis);
@@ -187,10 +188,10 @@ export class RapierVehiclePhysics {
         { x: width, y: wheelY, z: rearZ },     // rear-right
       ];
     } else {
-      // Car - based on official Three.js example layout
-      const width = 1.0; // ~half car width
-      const frontZ = 1.5; // front axle position
-      const rearZ = -1.5; // rear axle position
+      // Car - wider track for better stability against flipping
+      const width = 1.2; // Wider track (was 1.0) - prevents roll
+      const frontZ = 1.6; // front axle position (slightly longer wheelbase)
+      const rearZ = -1.6; // rear axle position
       return [
         { x: -width, y: wheelY, z: frontZ },   // front-left
         { x: width, y: wheelY, z: frontZ },    // front-right
@@ -314,6 +315,12 @@ export class RapierVehiclePhysics {
 
     // Update all vehicle controllers
     this.vehicles.forEach((vehicle) => {
+      // Skip physics update for flying vehicles - they use direct mesh manipulation
+      // This prevents physics conflicts and improves performance
+      if (vehicle.vehicleType === 'helicopter' || vehicle.vehicleType === 'airplane') {
+        return;
+      }
+
       vehicle.controller.updateVehicle(fixedDt);
 
       // GTA5-style motorcycle physics
@@ -452,9 +459,9 @@ export class RapierVehiclePhysics {
   /**
    * GTA-style arcade car physics stabilization
    * Key principles:
-   * 1. HEAVY downforce keeps car glued to ground
-   * 2. Aggressive anti-roll prevents ANY flipping
-   * 3. Smooth, planted feel at all speeds
+   * 1. MASSIVE downforce keeps car absolutely glued to ground
+   * 2. INSTANT anti-roll - car should NEVER flip from turning
+   * 3. Smooth, planted feel regardless of steering input
    */
   private updateCarStabilization(vehicle: RapierVehicle, dt: number): void {
     const chassis = vehicle.chassis;
@@ -471,9 +478,9 @@ export class RapierVehiclePhysics {
     const localRight = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
     const worldUp = new THREE.Vector3(0, 1, 0);
 
-    // Check if grounded
+    // Check if grounded (more generous threshold)
     const uprightness = localUp.dot(worldUp);
-    const isGrounded = uprightness > 0.4;
+    const isGrounded = uprightness > 0.3;
 
     // Calculate roll and pitch angles
     const projectedUp = worldUp.clone().sub(localForward.clone().multiplyScalar(worldUp.dot(localForward)));
@@ -484,42 +491,57 @@ export class RapierVehiclePhysics {
     }
     const currentPitch = Math.asin(Math.max(-1, Math.min(1, localForward.y)));
 
+    // Get roll angular velocity (how fast the car is rolling)
+    const rollAngVel = angvel.x * localForward.x + angvel.y * localForward.y + angvel.z * localForward.z;
+
     if (isGrounded) {
-      // === MASSIVE DOWNFORCE ===
-      // This is THE key - car feels glued to the road
-      const downforceBase = 80; // Strong base downforce (4x previous)
-      const downforceSpeed = speed * speed * 1.0; // Speed-squared (2.5x previous)
-      const totalDownforce = downforceBase + Math.min(downforceSpeed, 500);
+      // === EXTREME DOWNFORCE ===
+      // Car is glued to the road - 3x stronger than before
+      const downforceBase = 200; // Very strong constant downforce
+      const downforceSpeed = speed * speed * 2.5; // Speed-squared coefficient
+      const totalDownforce = downforceBase + Math.min(downforceSpeed, 1500);
 
       const downforceVec = localUp.clone().multiplyScalar(-totalDownforce * dt);
       chassis.applyImpulse({ x: downforceVec.x, y: downforceVec.y, z: downforceVec.z }, true);
 
-      // === CONSTANT ANGULAR DAMPING ===
-      // Always damp rotations - prevents any wobble or instability
-      const baseDamping = 2.0;
-      chassis.applyTorqueImpulse({
-        x: -angvel.x * baseDamping * dt,
-        y: -angvel.y * baseDamping * dt * 0.3, // Less yaw damping for turning
-        z: -angvel.z * baseDamping * dt
-      }, true);
+      // === HEAVY ROLL ANGULAR VELOCITY DAMPING ===
+      // This is KEY - prevents roll from ever building up during turns
+      // Damp roll velocity heavily - car resists any roll motion
+      const rollDampingStrength = 8.0; // Very strong damping
+      const rollDampTorque = localForward.clone().multiplyScalar(-rollAngVel * rollDampingStrength);
+      chassis.applyTorqueImpulse(
+        { x: rollDampTorque.x, y: rollDampTorque.y, z: rollDampTorque.z },
+        true
+      );
 
-      // === AGGRESSIVE ANTI-ROLL ===
-      // Start correcting at just 5 degrees - car stays flat
-      const rollThreshold = Math.PI / 36; // 5 degrees
+      // === INSTANT ANTI-ROLL ===
+      // Start correcting at 2 degrees - car stays absolutely flat
+      const rollThreshold = Math.PI / 90; // 2 degrees - very early
       if (Math.abs(currentRoll) > rollThreshold) {
-        // Very strong correction - car should not lean much
-        const correctionStrength = Math.abs(currentRoll) * 40;
-        const rollTorque = localForward.clone().multiplyScalar(-Math.sign(currentRoll) * correctionStrength);
+        // Exponentially stronger correction as roll increases
+        // At 5 degrees: strength ~100, at 15 degrees: strength ~300
+        const rollDegrees = Math.abs(currentRoll) * (180 / Math.PI);
+        const correctionStrength = 80 + rollDegrees * rollDegrees * 1.5;
+        const rollTorque = localForward.clone().multiplyScalar(-currentRoll * correctionStrength);
         chassis.applyTorqueImpulse(
           { x: rollTorque.x, y: rollTorque.y, z: rollTorque.z },
           true
         );
       }
 
+      // === GENERAL ANGULAR DAMPING ===
+      // Smooth out all rotational motion
+      const baseDamping = 3.0;
+      chassis.applyTorqueImpulse({
+        x: -angvel.x * baseDamping * dt,
+        y: -angvel.y * baseDamping * dt * 0.2, // Less yaw damping for steering
+        z: -angvel.z * baseDamping * dt
+      }, true);
+
       // === ANTI-PITCH ===
       // Prevent nose-diving or wheelies
-      if (Math.abs(currentPitch) > Math.PI / 18) { // 10 degrees
-        const pitchCorrection = -currentPitch * 30;
+      if (Math.abs(currentPitch) > Math.PI / 30) { // 6 degrees
+        const pitchCorrection = -currentPitch * 50;
         chassis.applyTorqueImpulse({ x: pitchCorrection * dt, y: 0, z: 0 }, true);
       }
 
@@ -529,43 +551,51 @@ export class RapierVehiclePhysics {
       const invQuat = quat.clone().invert();
       localVel.applyQuaternion(invQuat);
 
-      // If sliding sideways, apply counter-force
-      if (Math.abs(localVel.x) > 0.5 && speed > 2) {
-        const slideCorrection = -localVel.x * 15 * dt;
+      // Strong counter-force against sideways motion
+      if (Math.abs(localVel.x) > 0.3 && speed > 1) {
+        const slideCorrection = -localVel.x * 25 * dt;
         const correctionForce = localRight.clone().multiplyScalar(slideCorrection);
         chassis.applyImpulse({ x: correctionForce.x, y: 0, z: correctionForce.z }, true);
       }
     } else {
       // === AIRBORNE ===
-      // Strong stabilization in air
-      const airDamping = 1.5;
+      // Very strong stabilization in air
+      const airDamping = 3.0;
       chassis.applyTorqueImpulse({
         x: -angvel.x * airDamping,
         y: -angvel.y * airDamping * 0.3,
         z: -angvel.z * airDamping
       }, true);
 
-      // Self-right aggressively
-      if (uprightness < 0.9) {
-        const rightingStrength = (0.9 - uprightness) * 20;
+      // Self-right very aggressively
+      if (uprightness < 0.95) {
+        const rightingStrength = (0.95 - uprightness) * 40;
         const rollTorque = localForward.clone().multiplyScalar(-currentRoll * rightingStrength);
         chassis.applyTorqueImpulse(
           { x: rollTorque.x, y: rollTorque.y, z: rollTorque.z },
           true
         );
         // Level pitch too
-        chassis.applyTorqueImpulse({ x: -currentPitch * 10, y: 0, z: 0 }, true);
+        chassis.applyTorqueImpulse({ x: -currentPitch * 20, y: 0, z: 0 }, true);
       }
     }
 
-    // === EMERGENCY FLIP RECOVERY ===
-    // Kicks in at 25 degrees - way before flipping
-    const criticalRoll = Math.PI / 7.2; // 25 degrees
+    // === EMERGENCY FLIP PREVENTION ===
+    // Kicks in at 15 degrees - massive force to prevent any flip
+    const criticalRoll = Math.PI / 12; // 15 degrees
     if (Math.abs(currentRoll) > criticalRoll) {
-      const recoveryStrength = 60;
+      const urgency = 1 + (Math.abs(currentRoll) - criticalRoll) * 5; // Gets stronger as roll increases
+      const recoveryStrength = 150 * urgency;
       const recoveryTorque = localForward.clone().multiplyScalar(-currentRoll * recoveryStrength);
       chassis.applyTorqueImpulse(
         { x: recoveryTorque.x, y: recoveryTorque.y, z: recoveryTorque.z },
+        true
+      );
+
+      // Also apply direct counter-angular velocity
+      const counterAngVel = localForward.clone().multiplyScalar(-rollAngVel * 5);
+      chassis.applyTorqueImpulse(
+        { x: counterAngVel.x, y: counterAngVel.y, z: counterAngVel.z },
         true
       );
     }
@@ -591,6 +621,19 @@ export class RapierVehiclePhysics {
       quaternion: new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w),
       speed
     };
+  }
+
+  // Set vehicle transform (used for flying vehicles that bypass physics)
+  setVehicleTransform(id: string, position: THREE.Vector3, quaternion: THREE.Quaternion): void {
+    const vehicle = this.vehicles.get(id);
+    if (!vehicle) return;
+
+    // Set the physics body position and rotation to match the mesh
+    vehicle.chassis.setTranslation({ x: position.x, y: position.y, z: position.z }, true);
+    vehicle.chassis.setRotation({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w }, true);
+    // Reset velocities for flying vehicles (they don't use physics-based movement)
+    vehicle.chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    vehicle.chassis.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 
   getWheelTransforms(id: string): Array<{

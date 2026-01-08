@@ -5,6 +5,7 @@ import { Game } from '@/core/Game';
 import { Pathfinding } from './Pathfinding';
 import { COLLISION_GROUPS } from '@/physics/PhysicsWorld';
 import { globalEvents } from '@/core/EventEmitter';
+import { ProceduralCharacterAnimator } from '@/animation/CharacterAnimator';
 
 const CHARACTER_CONFIGS: CharacterConfig[] = [
   {
@@ -49,10 +50,27 @@ const CHARACTER_CONFIGS: CharacterConfig[] = [
   }
 ];
 
+// Animation body part references for NPCs
+interface NPCBodyParts {
+  head: THREE.Group;
+  torso: THREE.Mesh;
+  leftThigh: THREE.Mesh;
+  rightThigh: THREE.Mesh;
+  leftCalf: THREE.Mesh;
+  rightCalf: THREE.Mesh;
+  leftUpperArm: THREE.Mesh;
+  rightUpperArm: THREE.Mesh;
+  leftForearm: THREE.Mesh;
+  rightForearm: THREE.Mesh;
+}
+
 interface NPC extends Character {
   behavior: AIBehavior;
   animationMixer?: THREE.AnimationMixer;
   lastPathUpdate: number;
+  bodyParts?: NPCBodyParts;
+  animator?: ProceduralCharacterAnimator;
+  actualVelocity: number;
 }
 
 export class AIManager {
@@ -69,6 +87,9 @@ export class AIManager {
   private behaviorUpdateInterval: number = 0.5;
   private lastBehaviorUpdate: number = 0;
   private isMobile: boolean;
+
+  // Performance: pathfinding cooldown to prevent A* spam
+  private pathfindCooldown: number = 500; // ms between pathfinding attempts
 
   constructor(game: Game) {
     this.game = game;
@@ -167,12 +188,33 @@ export class AIManager {
         currentPatrolIndex: 0,
         provoked: false
       },
-      lastPathUpdate: 0
+      lastPathUpdate: 0,
+      actualVelocity: 0
     };
 
     this.game.physics.linkMeshToBody(mesh, body);
     this.game.scene.add(mesh);
     this.npcs.set(id, npc);
+
+    // Copy body part references for animation and setup animator
+    if (mesh.userData.bodyParts) {
+      npc.bodyParts = mesh.userData.bodyParts as NPCBodyParts;
+
+      // Create distance-based animator for natural movement
+      npc.animator = new ProceduralCharacterAnimator();
+      npc.animator.setBodyParts({
+        head: npc.bodyParts.head,
+        torso: npc.bodyParts.torso,
+        leftThigh: npc.bodyParts.leftThigh,
+        rightThigh: npc.bodyParts.rightThigh,
+        leftCalf: npc.bodyParts.leftCalf,
+        rightCalf: npc.bodyParts.rightCalf,
+        leftUpperArm: npc.bodyParts.leftUpperArm,
+        rightUpperArm: npc.bodyParts.rightUpperArm,
+        leftForearm: npc.bodyParts.leftForearm,
+        rightForearm: npc.bodyParts.rightForearm
+      });
+    }
 
     // Attach weapon mesh if NPC has a weapon
     if (npc.currentWeapon) {
@@ -226,13 +268,71 @@ export class AIManager {
       metalness: 0.1
     });
 
+    // Head group for face details
+    const headGroup = new THREE.Group();
+    headGroup.position.y = 1.65;
+    headGroup.name = 'head';
+    group.add(headGroup);
+
     // Head - slightly oval
     const headGeometry = new THREE.SphereGeometry(0.14, 16, 16);
     headGeometry.scale(1, 1.1, 0.95);
-    const head = new THREE.Mesh(headGeometry, skinMaterial);
-    head.position.y = 1.65;
-    head.castShadow = true;
-    group.add(head);
+    const headMesh = new THREE.Mesh(headGeometry, skinMaterial);
+    headMesh.castShadow = true;
+    headGroup.add(headMesh);
+
+    // === FACE DETAILS ===
+    const eyeWhiteMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+    const eyePupilMaterial = new THREE.MeshStandardMaterial({ color: 0x2a1a0a, roughness: 0.2 });
+    const eyebrowMaterial = new THREE.MeshStandardMaterial({ color: skinColor === 0x1a1a1a ? 0x0a0a0a : 0x1a1a1a, roughness: 0.9 });
+    const lipMaterial = new THREE.MeshStandardMaterial({ color: 0xc47a7a, roughness: 0.6 });
+
+    // Eye whites
+    const eyeWhiteGeometry = new THREE.SphereGeometry(0.02, 6, 6);
+    const leftEyeWhite = new THREE.Mesh(eyeWhiteGeometry, eyeWhiteMaterial);
+    leftEyeWhite.position.set(-0.04, 0.02, 0.1);
+    leftEyeWhite.scale.set(1, 0.7, 0.5);
+    headGroup.add(leftEyeWhite);
+
+    const rightEyeWhite = new THREE.Mesh(eyeWhiteGeometry, eyeWhiteMaterial);
+    rightEyeWhite.position.set(0.04, 0.02, 0.1);
+    rightEyeWhite.scale.set(1, 0.7, 0.5);
+    headGroup.add(rightEyeWhite);
+
+    // Pupils
+    const pupilGeometry = new THREE.SphereGeometry(0.01, 6, 6);
+    const leftPupil = new THREE.Mesh(pupilGeometry, eyePupilMaterial);
+    leftPupil.position.set(-0.04, 0.02, 0.115);
+    headGroup.add(leftPupil);
+
+    const rightPupil = new THREE.Mesh(pupilGeometry, eyePupilMaterial);
+    rightPupil.position.set(0.04, 0.02, 0.115);
+    headGroup.add(rightPupil);
+
+    // Eyebrows
+    const eyebrowGeometry = new THREE.BoxGeometry(0.035, 0.007, 0.012);
+    const leftEyebrow = new THREE.Mesh(eyebrowGeometry, eyebrowMaterial);
+    leftEyebrow.position.set(-0.04, 0.055, 0.1);
+    leftEyebrow.rotation.z = 0.1;
+    headGroup.add(leftEyebrow);
+
+    const rightEyebrow = new THREE.Mesh(eyebrowGeometry, eyebrowMaterial);
+    rightEyebrow.position.set(0.04, 0.055, 0.1);
+    rightEyebrow.rotation.z = -0.1;
+    headGroup.add(rightEyebrow);
+
+    // Nose
+    const noseGeometry = new THREE.ConeGeometry(0.012, 0.035, 4);
+    const nose = new THREE.Mesh(noseGeometry, skinMaterial);
+    nose.position.set(0, -0.01, 0.11);
+    nose.rotation.x = Math.PI / 2;
+    headGroup.add(nose);
+
+    // Mouth
+    const mouthGeometry = new THREE.BoxGeometry(0.035, 0.005, 0.008);
+    const mouth = new THREE.Mesh(mouthGeometry, lipMaterial);
+    mouth.position.set(0, -0.05, 0.1);
+    headGroup.add(mouth);
 
     // Hair - random styles
     const hairColors = [0x1a1a1a, 0x3a2a1a, 0x5a4a3a, 0x8a6a4a, 0xaa8866];
@@ -242,9 +342,9 @@ export class AIManager {
     if (Math.random() > 0.3) { // 70% have visible hair
       const hairGeometry = new THREE.SphereGeometry(0.145, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
       const hair = new THREE.Mesh(hairGeometry, hairMaterial);
-      hair.position.y = 1.68;
+      hair.position.y = 0.03; // Relative to head group
       hair.scale.set(1, 0.7 + Math.random() * 0.3, 1);
-      group.add(hair);
+      headGroup.add(hair);
     }
 
     // Neck
@@ -257,6 +357,7 @@ export class AIManager {
     const chestGeometry = new THREE.BoxGeometry(0.36, 0.26, 0.18);
     const chest = new THREE.Mesh(chestGeometry, shirtMaterial);
     chest.position.y = 1.28;
+    chest.name = 'torso';
     chest.castShadow = true;
     group.add(chest);
 
@@ -280,12 +381,14 @@ export class AIManager {
     const leftUpperArm = new THREE.Mesh(upperArmGeometry, shirtMaterial);
     leftUpperArm.position.set(-0.23, 1.28, 0);
     leftUpperArm.rotation.z = 0.15;
+    leftUpperArm.name = 'leftUpperArm';
     leftUpperArm.castShadow = true;
     group.add(leftUpperArm);
 
     const rightUpperArm = new THREE.Mesh(upperArmGeometry, shirtMaterial);
     rightUpperArm.position.set(0.23, 1.28, 0);
     rightUpperArm.rotation.z = -0.15;
+    rightUpperArm.name = 'rightUpperArm';
     rightUpperArm.castShadow = true;
     group.add(rightUpperArm);
 
@@ -295,13 +398,14 @@ export class AIManager {
     const leftForearm = new THREE.Mesh(forearmGeometry, skinMaterial);
     leftForearm.position.set(-0.27, 1.0, 0);
     leftForearm.rotation.z = 0.1;
+    leftForearm.name = 'leftForearm';
     leftForearm.castShadow = true;
     group.add(leftForearm);
 
     const rightForearm = new THREE.Mesh(forearmGeometry, skinMaterial);
     rightForearm.position.set(0.27, 1.0, 0);
     rightForearm.rotation.z = -0.1;
-    rightForearm.name = 'rightArm';
+    rightForearm.name = 'rightForearm';
     rightForearm.castShadow = true;
     group.add(rightForearm);
 
@@ -323,11 +427,13 @@ export class AIManager {
 
     const leftThigh = new THREE.Mesh(thighGeometry, pantsMaterial);
     leftThigh.position.set(-0.1, 0.66, 0);
+    leftThigh.name = 'leftThigh';
     leftThigh.castShadow = true;
     group.add(leftThigh);
 
     const rightThigh = new THREE.Mesh(thighGeometry, pantsMaterial);
     rightThigh.position.set(0.1, 0.66, 0);
+    rightThigh.name = 'rightThigh';
     rightThigh.castShadow = true;
     group.add(rightThigh);
 
@@ -336,11 +442,13 @@ export class AIManager {
 
     const leftCalf = new THREE.Mesh(calfGeometry, pantsMaterial);
     leftCalf.position.set(-0.1, 0.32, 0);
+    leftCalf.name = 'leftCalf';
     leftCalf.castShadow = true;
     group.add(leftCalf);
 
     const rightCalf = new THREE.Mesh(calfGeometry, pantsMaterial);
     rightCalf.position.set(0.1, 0.32, 0);
+    rightCalf.name = 'rightCalf';
     rightCalf.castShadow = true;
     group.add(rightCalf);
 
@@ -379,6 +487,20 @@ export class AIManager {
       bandana.position.y = 1.72;
       group.add(bandana);
     }
+
+    // Store body part references for animation
+    group.userData.bodyParts = {
+      head: headGroup,
+      torso: chest,
+      leftThigh,
+      rightThigh,
+      leftCalf,
+      rightCalf,
+      leftUpperArm,
+      rightUpperArm,
+      leftForearm,
+      rightForearm
+    };
 
     return group;
   }
@@ -537,6 +659,27 @@ export class AIManager {
         this.handleSeekingState(npc, deltaTime);
         break;
     }
+
+    // Update NPC animation based on actual velocity
+    this.updateNPCAnimation(npc, deltaTime);
+  }
+
+  private updateNPCAnimation(npc: NPC, deltaTime: number): void {
+    if (!npc.animator) return;
+
+    // Get velocity from physics body
+    const velocity = new THREE.Vector3(
+      npc.body.velocity.x,
+      npc.body.velocity.y,
+      npc.body.velocity.z
+    );
+
+    // Track actual velocity
+    npc.actualVelocity = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+
+    // Use distance-based animator (prevents sliding/moonwalking)
+    // NPCs are always considered grounded for animation purposes
+    npc.animator.update(velocity, deltaTime, true);
   }
 
   private handleIdleState(npc: NPC, deltaTime: number): void {
@@ -550,6 +693,11 @@ export class AIManager {
 
   private handleWalkingState(npc: NPC, deltaTime: number): void {
     if (npc.path.length === 0) {
+      // Throttle pathfinding - don't recalculate every frame
+      const now = performance.now();
+      if (now - npc.lastPathUpdate < this.pathfindCooldown) return;
+      npc.lastPathUpdate = now;
+
       if (npc.behavior.patrolPoints.length > 0) {
         const target = npc.behavior.patrolPoints[npc.behavior.currentPatrolIndex];
         npc.path = this.pathfinding.findPath(npc.mesh.position, target);
@@ -570,9 +718,14 @@ export class AIManager {
 
     if (npc.behavior.state === 'fleeing') {
       if (npc.path.length === 0 || distance < 10) {
-        const fleeDirection = npc.mesh.position.clone().sub(playerPos).normalize();
-        const fleeTarget = npc.mesh.position.clone().add(fleeDirection.multiplyScalar(30));
-        npc.path = this.pathfinding.findPath(npc.mesh.position, fleeTarget);
+        // Throttle pathfinding
+        const now = performance.now();
+        if (now - npc.lastPathUpdate >= this.pathfindCooldown) {
+          npc.lastPathUpdate = now;
+          const fleeDirection = npc.mesh.position.clone().sub(playerPos).normalize();
+          const fleeTarget = npc.mesh.position.clone().add(fleeDirection.multiplyScalar(30));
+          npc.path = this.pathfinding.findPath(npc.mesh.position, fleeTarget);
+        }
       }
 
       if (distance > 50) {
@@ -587,6 +740,13 @@ export class AIManager {
   private handleAttackingState(npc: NPC, deltaTime: number): void {
     const playerPos = this.game.player.position;
     const distance = npc.mesh.position.distanceTo(playerPos);
+
+    // Police stop attacking if wanted level drops to 0
+    if (npc.config.type === 'police' && this.game.player.stats.wantedLevel === 0) {
+      npc.behavior.state = 'patrolling';
+      npc.behavior.alertLevel = 0;
+      return;
+    }
 
     this.lookAt(npc, playerPos);
 
@@ -618,7 +778,12 @@ export class AIManager {
       // Too far - advance toward player
       if (distance > optimalRange + 5) {
         if (npc.path.length === 0) {
-          npc.path = this.pathfinding.findPath(npc.mesh.position, playerPos);
+          // Throttle pathfinding
+          const now = performance.now();
+          if (now - npc.lastPathUpdate >= this.pathfindCooldown) {
+            npc.lastPathUpdate = now;
+            npc.path = this.pathfinding.findPath(npc.mesh.position, playerPos);
+          }
         }
         this.moveAlongPath(npc, deltaTime, npc.config.speed * 1.2);
       }
@@ -666,7 +831,12 @@ export class AIManager {
       // No weapon - charge at player for melee
       if (distance > 2) {
         if (npc.path.length === 0) {
-          npc.path = this.pathfinding.findPath(npc.mesh.position, playerPos);
+          // Throttle pathfinding
+          const now = performance.now();
+          if (now - npc.lastPathUpdate >= this.pathfindCooldown) {
+            npc.lastPathUpdate = now;
+            npc.path = this.pathfinding.findPath(npc.mesh.position, playerPos);
+          }
         }
         this.moveAlongPath(npc, deltaTime, npc.config.speed * 1.5);
       } else {
@@ -694,6 +864,14 @@ export class AIManager {
   }
 
   private handleSeekingState(npc: NPC, deltaTime: number): void {
+    // Police stop seeking if wanted level drops to 0
+    if (npc.config.type === 'police' && this.game.player.stats.wantedLevel === 0) {
+      npc.behavior.state = 'patrolling';
+      npc.behavior.alertLevel = 0;
+      npc.behavior.lastKnownPlayerPosition = null;
+      return;
+    }
+
     if (!npc.behavior.lastKnownPlayerPosition) {
       npc.behavior.state = 'patrolling';
       return;
@@ -711,10 +889,15 @@ export class AIManager {
       }
     } else {
       if (npc.path.length === 0) {
-        npc.path = this.pathfinding.findPath(
-          npc.mesh.position,
-          npc.behavior.lastKnownPlayerPosition
-        );
+        // Throttle pathfinding
+        const now = performance.now();
+        if (now - npc.lastPathUpdate >= this.pathfindCooldown) {
+          npc.lastPathUpdate = now;
+          npc.path = this.pathfinding.findPath(
+            npc.mesh.position,
+            npc.behavior.lastKnownPlayerPosition
+          );
+        }
       }
       this.moveAlongPath(npc, deltaTime, npc.config.speed * 1.2);
     }
@@ -818,6 +1001,11 @@ export class AIManager {
         if (wantedLevel >= 1 && distance < 50) {
           npc.behavior.state = 'attacking';
           npc.behavior.alertLevel = 100;
+        } else if (wantedLevel === 0 && (npc.behavior.state === 'attacking' || npc.behavior.state === 'seeking')) {
+          // Police stop pursuing when wanted level is cleared
+          npc.behavior.state = 'patrolling';
+          npc.behavior.alertLevel = 0;
+          npc.behavior.lastKnownPlayerPosition = null;
         }
       } else if (npc.config.hostile && npc.behavior.provoked) {
         if (distance < 20) {
@@ -1198,6 +1386,14 @@ export class AIManager {
 
     // Play radio dispatch for reinforcements
     this.playPoliceRadio();
+  }
+
+  setVisible(visible: boolean): void {
+    this.npcs.forEach((npc) => {
+      if (npc.mesh) {
+        npc.mesh.visible = visible;
+      }
+    });
   }
 
   dispose(): void {

@@ -31,7 +31,9 @@ export class PhysicsWorld {
     this.world = new CANNON.World();
     this.world.gravity.set(0, config.gravity, 0);
     this.world.broadphase = new CANNON.SAPBroadphase(this.world);
-    this.world.allowSleep = false;
+
+    // Enable sleep for performance - stationary bodies won't be simulated
+    this.world.allowSleep = true;
 
     // Create materials
     this.defaultMaterial = new CANNON.Material('default');

@@ -32,7 +32,13 @@ export class UIManager {
     pauseMenu: HTMLElement | null;
     crosshair: HTMLElement | null;
     notificationContainer: HTMLElement | null;
+    fpsCounter: HTMLElement | null;
   };
+
+  // FPS tracking
+  private fpsHistory: number[] = [];
+  private lastFpsUpdate: number = 0;
+  private showDebugStats: boolean = false;
 
   constructor(game: Game) {
     this.game = game;
@@ -47,7 +53,8 @@ export class UIManager {
       missionObjective: null,
       pauseMenu: null,
       crosshair: null,
-      notificationContainer: null
+      notificationContainer: null,
+      fpsCounter: null
     };
   }
 
@@ -56,7 +63,31 @@ export class UIManager {
     this.setupMinimap();
     this.setupEventListeners();
     this.setupPauseMenu();
+    this.createFpsCounter();
     this.multiplayerUI.initialize();
+  }
+
+  private createFpsCounter(): void {
+    // Create FPS counter element
+    const fpsCounter = document.createElement('div');
+    fpsCounter.id = 'fps-counter';
+    fpsCounter.style.cssText = `
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #00ff00;
+      padding: 8px 12px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      border-radius: 4px;
+      z-index: 9999;
+      pointer-events: none;
+      min-width: 80px;
+    `;
+    fpsCounter.textContent = 'FPS: --';
+    document.body.appendChild(fpsCounter);
+    this.elements.fpsCounter = fpsCounter;
   }
 
   private cacheElements(): void {
@@ -145,7 +176,60 @@ export class UIManager {
     this.updateMoney();
     this.updateMinimap();
     this.updateMissionTimer();
+    this.updateFpsCounter(deltaTime);
     this.multiplayerUI.update();
+  }
+
+  private updateFpsCounter(deltaTime: number): void {
+    if (!this.elements.fpsCounter) return;
+
+    // Calculate FPS
+    const fps = deltaTime > 0 ? Math.round(1 / deltaTime) : 0;
+    this.fpsHistory.push(fps);
+
+    // Keep last 30 frames for average
+    if (this.fpsHistory.length > 30) {
+      this.fpsHistory.shift();
+    }
+
+    // Update display every 250ms to avoid flicker
+    const now = performance.now();
+    if (now - this.lastFpsUpdate > 250) {
+      const avgFps = Math.round(
+        this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length
+      );
+
+      // Color based on performance
+      let color = '#00ff00'; // Green for 50+
+      if (avgFps < 30) {
+        color = '#ff0000'; // Red for <30
+      } else if (avgFps < 50) {
+        color = '#ffff00'; // Yellow for 30-50
+      }
+
+      // Get quality level from performance manager
+      const quality = this.game.performance?.getQuality() || 'high';
+
+      // Get render stats
+      const renderStats = this.game.renderer.getRenderStats();
+
+      this.elements.fpsCounter.style.color = color;
+      this.elements.fpsCounter.innerHTML = `
+        FPS: ${avgFps}<br>
+        Quality: ${quality}<br>
+        Draw: ${renderStats.drawCalls}<br>
+        Tris: ${(renderStats.triangles / 1000).toFixed(1)}K
+      `;
+
+      this.lastFpsUpdate = now;
+    }
+  }
+
+  toggleDebugStats(): void {
+    this.showDebugStats = !this.showDebugStats;
+    if (this.elements.fpsCounter) {
+      this.elements.fpsCounter.style.display = this.showDebugStats ? 'block' : 'none';
+    }
   }
 
   private updateHealthBar(): void {

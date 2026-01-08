@@ -111,8 +111,14 @@ export class InputManager extends EventEmitter {
   private handleKeyDown(event: KeyboardEvent): void {
     const action = this.keyMap.get(event.code);
     if (action && typeof this.state[action] === 'boolean') {
+      // Skip keyboard repeat events to prevent flooding
+      // Only emit keydown on initial press, not on auto-repeat
+      const wasAlreadyPressed = this.state[action] as boolean;
       (this.state[action] as boolean) = true;
-      this.emit('keydown', { action, code: event.code });
+
+      if (!wasAlreadyPressed) {
+        this.emit('keydown', { action, code: event.code });
+      }
     }
 
     if (event.code === 'Escape') {
@@ -122,6 +128,11 @@ export class InputManager extends EventEmitter {
     if (event.code === 'Tab') {
       event.preventDefault();
       this.emit('weaponWheel', { open: true });
+    }
+
+    // Prevent Space from scrolling the page (browser default)
+    if (event.code === 'Space') {
+      event.preventDefault();
     }
   }
 

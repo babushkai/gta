@@ -21,6 +21,19 @@ interface StreetLight {
   position: THREE.Vector3;
 }
 
+// Building metadata for CityDetailsManager to attach details to actual buildings
+export interface BuildingMetadata {
+  id: string;
+  position: THREE.Vector3;  // Ground position (y=0)
+  actualY: number;          // Actual mesh Y position (height/2)
+  width: number;
+  height: number;
+  depth: number;
+  style: NYCBuildingStyle;
+  district: string;
+  mesh: THREE.Group;
+}
+
 // NYC Color palettes - warm, vibrant NYC character
 const NYC_PALETTES = {
   brownstone: [0xB87333, 0xCD853F, 0xD2691E, 0xCC7722, 0xC19A6B], // Warm brownstone
@@ -47,6 +60,13 @@ export class World {
   private buildings: Building[] = [];
   private streetLights: StreetLight[] = [];
 
+  // Container for all world objects (for hiding during interior)
+  private worldGroup: THREE.Group;
+
+  // Building registry for CityDetailsManager to attach details to actual buildings
+  private buildingRegistry: Map<string, BuildingMetadata> = new Map();
+  private currentDistrict: string = 'midtown'; // Track current district during creation
+
   private ground: THREE.Mesh | null = null;
   private roads: THREE.Mesh[] = [];
 
@@ -72,6 +92,12 @@ export class World {
 
   constructor(game: Game) {
     this.game = game;
+    this.worldGroup = new THREE.Group();
+    this.worldGroup.name = 'worldGroup';
+  }
+
+  getWorldGroup(): THREE.Group {
+    return this.worldGroup;
   }
 
   async initialize(): Promise<void> {
@@ -84,6 +110,9 @@ export class World {
     this.createDestructibles();
 
     this.game.physics.createGroundPlane(1000);
+
+    // Add worldGroup to scene (allows hiding entire world for interiors)
+    this.game.scene.add(this.worldGroup);
   }
 
   private initializeInstancedMeshes(): void {
@@ -102,7 +131,7 @@ export class World {
     this.hydrantInstances = new THREE.InstancedMesh(hydrantGeometry, hydrantMaterial, maxHydrants);
     this.hydrantInstances.castShadow = true;
     this.hydrantInstances.count = 0; // Start with 0 visible
-    this.game.scene.add(this.hydrantInstances);
+    this.worldGroup.add(this.hydrantInstances);
 
     // Crosswalk stripes
     const stripeGeometry = new THREE.PlaneGeometry(0.6, 1);
@@ -116,7 +145,7 @@ export class World {
     this.crosswalkStripeInstances.rotation.x = -Math.PI / 2;
     this.crosswalkStripeInstances.position.y = 0.028;
     this.crosswalkStripeInstances.count = 0;
-    this.game.scene.add(this.crosswalkStripeInstances);
+    this.worldGroup.add(this.crosswalkStripeInstances);
 
     // Traffic light poles (just the main pole cylinder for instancing)
     const poleGeometry = new THREE.CylinderGeometry(0.12, 0.15, 7, 8);
@@ -124,7 +153,7 @@ export class World {
     this.trafficLightInstances = new THREE.InstancedMesh(poleGeometry, poleMaterial, 200);
     this.trafficLightInstances.castShadow = true;
     this.trafficLightInstances.count = 0;
-    this.game.scene.add(this.trafficLightInstances);
+    this.worldGroup.add(this.trafficLightInstances);
   }
 
   private createGround(): void {
@@ -161,7 +190,7 @@ export class World {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.receiveShadow = true;
 
-    this.game.scene.add(this.ground);
+    this.worldGroup.add(this.ground);
   }
 
   private createGrassTexture(): THREE.CanvasTexture {
@@ -310,18 +339,18 @@ export class World {
       avenue.position.set(avenueX, 0.02, 0);
       avenue.receiveShadow = true;
       this.roads.push(avenue);
-      this.game.scene.add(avenue);
+      this.worldGroup.add(avenue);
 
       // Yellow center line (double yellow for avenues)
       const centerLine1 = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 600), yellowLineMaterial);
       centerLine1.rotation.x = -Math.PI / 2;
       centerLine1.position.set(avenueX - 0.2, 0.025, 0);
-      this.game.scene.add(centerLine1);
+      this.worldGroup.add(centerLine1);
 
       const centerLine2 = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 600), yellowLineMaterial);
       centerLine2.rotation.x = -Math.PI / 2;
       centerLine2.position.set(avenueX + 0.2, 0.025, 0);
-      this.game.scene.add(centerLine2);
+      this.worldGroup.add(centerLine2);
 
       // Sidewalks on both sides
       for (const side of [-1, 1]) {
@@ -332,12 +361,12 @@ export class World {
         sidewalk.rotation.x = -Math.PI / 2;
         sidewalk.position.set(avenueX + side * (avenueWidth / 2 + sidewalkWidth / 2), 0.08, 0);
         sidewalk.receiveShadow = true;
-        this.game.scene.add(sidewalk);
+        this.worldGroup.add(sidewalk);
 
         // Curb
         const curb = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 600), curbMaterial);
         curb.position.set(avenueX + side * (avenueWidth / 2 + 0.15), 0.075, 0);
-        this.game.scene.add(curb);
+        this.worldGroup.add(curb);
       }
     }
 
@@ -354,14 +383,14 @@ export class World {
       street.position.set(0, 0.02, streetZ);
       street.receiveShadow = true;
       this.roads.push(street);
-      this.game.scene.add(street);
+      this.worldGroup.add(street);
 
       // White dashed center line
       for (let k = -30; k <= 30; k++) {
         const dash = new THREE.Mesh(new THREE.PlaneGeometry(3, 0.12), whiteLineMaterial);
         dash.rotation.x = -Math.PI / 2;
         dash.position.set(k * 10, 0.025, streetZ);
-        this.game.scene.add(dash);
+        this.worldGroup.add(dash);
       }
 
       // Sidewalks
@@ -373,12 +402,12 @@ export class World {
         sidewalk.rotation.x = -Math.PI / 2;
         sidewalk.position.set(0, 0.08, streetZ + side * (streetWidth / 2 + sidewalkWidth / 2));
         sidewalk.receiveShadow = true;
-        this.game.scene.add(sidewalk);
+        this.worldGroup.add(sidewalk);
 
         // Curb
         const curb = new THREE.Mesh(new THREE.BoxGeometry(600, 0.15, 0.3), curbMaterial);
         curb.position.set(0, 0.075, streetZ + side * (streetWidth / 2 + 0.15));
-        this.game.scene.add(curb);
+        this.worldGroup.add(curb);
       }
     }
 
@@ -396,7 +425,7 @@ export class World {
         intersection.rotation.x = -Math.PI / 2;
         intersection.position.set(intX, 0.022, intZ);
         intersection.receiveShadow = true;
-        this.game.scene.add(intersection);
+        this.worldGroup.add(intersection);
 
         // Crosswalks (zebra stripes)
         this.createCrosswalk(intX, intZ, avenueWidth, streetWidth);
@@ -441,7 +470,7 @@ export class World {
           const trashCan = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.35, 1, 12), trashCanMat);
           trashCan.position.set(baseX + 8, 0.5, baseZ + 6);
           trashCan.castShadow = true;
-          this.game.scene.add(trashCan);
+          this.worldGroup.add(trashCan);
 
           // Trash spilling out
           if (Math.random() > 0.6) {
@@ -454,7 +483,7 @@ export class World {
                 baseZ + 6 + (Math.random() - 0.5) * 1.5
               );
               trash.rotation.y = Math.random() * Math.PI;
-              this.game.scene.add(trash);
+              this.worldGroup.add(trash);
             }
           }
         }
@@ -470,7 +499,7 @@ export class World {
           mailbox.add(top);
           mailbox.position.set(baseX - 8, 0, baseZ + 7);
           mailbox.castShadow = true;
-          this.game.scene.add(mailbox);
+          this.worldGroup.add(mailbox);
         }
 
         // Newspaper box
@@ -478,7 +507,7 @@ export class World {
           const newsBox = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.1, 0.4), newsPaperMat);
           newsBox.position.set(baseX + 9, 0.55, baseZ - 6);
           newsBox.castShadow = true;
-          this.game.scene.add(newsBox);
+          this.worldGroup.add(newsBox);
         }
       }
     }
@@ -493,7 +522,7 @@ export class World {
         0.25,
         (Math.random() - 0.5) * 400
       );
-      this.game.scene.add(bag);
+      this.worldGroup.add(bag);
     }
   }
 
@@ -552,7 +581,7 @@ export class World {
       scaffoldGroup.add(net);
 
       scaffoldGroup.position.set(loc.x, 0, loc.z);
-      this.game.scene.add(scaffoldGroup);
+      this.worldGroup.add(scaffoldGroup);
     });
   }
 
@@ -654,12 +683,12 @@ export class World {
     const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4, 8), poleMaterial);
     arm.rotation.z = Math.PI / 2;
     arm.position.set(x - 2, 6.5, z);
-    this.game.scene.add(arm);
+    this.worldGroup.add(arm);
 
     // Traffic light housing
     const housing = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.5, 0.4), housingMaterial);
     housing.position.set(x - 3.5, 6.3, z);
-    this.game.scene.add(housing);
+    this.worldGroup.add(housing);
 
     // Lights
     const lightColors = [0xFF0000, 0xFFFF00, 0x00FF00];
@@ -674,20 +703,20 @@ export class World {
       });
       const light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), lightMat);
       light.position.set(x - 3.5, 6.7 - index * 0.4, z + 0.22);
-      this.game.scene.add(light);
+      this.worldGroup.add(light);
     });
 
     // Walk/Don't Walk sign
     const walkSign = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.1), housingMaterial);
     walkSign.position.set(x, 5.5, z);
-    this.game.scene.add(walkSign);
+    this.worldGroup.add(walkSign);
 
     const walkLight = new THREE.Mesh(
       new THREE.PlaneGeometry(0.25, 0.25),
       new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0xFF4400 : 0xFFFFFF })
     );
     walkLight.position.set(x, 5.5, z + 0.06);
-    this.game.scene.add(walkLight);
+    this.worldGroup.add(walkLight);
   }
 
   private createFireHydrant(x: number, z: number): void {
@@ -712,20 +741,20 @@ export class World {
     // Top cap
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.15, 8), hydrantMaterial);
     cap.position.set(x, 0.67, z);
-    this.game.scene.add(cap);
+    this.worldGroup.add(cap);
 
     // Nozzles
     for (const side of [-1, 1]) {
       const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.15, 6), hydrantMaterial);
       nozzle.rotation.z = Math.PI / 2;
       nozzle.position.set(x + side * 0.2, 0.4, z);
-      this.game.scene.add(nozzle);
+      this.worldGroup.add(nozzle);
     }
 
     // Base
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.1, 8), hydrantMaterial);
     base.position.set(x, 0.05, z);
-    this.game.scene.add(base);
+    this.worldGroup.add(base);
   }
 
   private createSubwayEntrance(x: number, z: number): void {
@@ -790,7 +819,7 @@ export class World {
     }
 
     frame.position.set(x, 0, z);
-    this.game.scene.add(frame);
+    this.worldGroup.add(frame);
   }
 
   private createBuildings(): void {
@@ -804,7 +833,9 @@ export class World {
   }
 
   private createMidtownDistrict(): void {
+    this.currentDistrict = 'midtown';
     // Center area - tall glass skyscrapers like Midtown Manhattan - EXPANDED
+    // Enhanced height variation for realistic NYC skyline
     for (let x = -4; x <= 4; x++) {
       for (let z = -4; z <= 4; z++) {
         if (x === 0 && z === 0) continue;
@@ -812,24 +843,50 @@ export class World {
         const baseX = x * 55;
         const baseZ = z * 55;
 
-        // Main tower
-        const height = 35 + Math.random() * 70;
+        // Distance from center affects height (natural skyline tapering)
+        const distanceFromCenter = Math.sqrt(x * x + z * z);
+        const heightMultiplier = 1.3 - (distanceFromCenter / 8) * 0.4;
+
+        // Key positions get signature tall buildings
+        const isMainAvenue = (Math.abs(x) <= 1);  // Central avenue
+        const isCorner = (Math.abs(x) >= 3 && Math.abs(z) >= 3);
+
+        let height: number;
+        let style: NYCBuildingStyle;
+
+        if (isMainAvenue && Math.abs(z) <= 2) {
+          // Tallest buildings on main avenue near center (Times Square feel)
+          height = 70 + Math.random() * 40;
+          style = 'glass_tower';
+        } else if (isCorner) {
+          // Shorter buildings at corners
+          height = 25 + Math.random() * 20;
+          style = Math.random() > 0.5 ? 'modern' : 'artdeco';
+        } else {
+          // Standard height with variation
+          height = (35 + Math.random() * 50) * heightMultiplier;
+          style = Math.random() > 0.3 ? 'glass_tower' : 'modern';
+        }
+
+        // Main tower - varied width based on height
+        const widthFactor = height > 60 ? 0.8 : 1.0;
         this.createNYCBuilding(
           new THREE.Vector3(baseX, 0, baseZ),
-          10 + Math.random() * 8,
+          (10 + Math.random() * 8) * widthFactor,
           height,
-          10 + Math.random() * 8,
-          Math.random() > 0.3 ? 'glass_tower' : 'modern'
+          (10 + Math.random() * 8) * widthFactor,
+          style
         );
 
-        // Smaller surrounding buildings
-        if (Math.random() > 0.4) {
+        // Smaller surrounding buildings for density
+        if (Math.random() > 0.35) {
+          const smallHeight = 18 + Math.random() * 25;
           this.createNYCBuilding(
             new THREE.Vector3(baseX + 16, 0, baseZ),
             7 + Math.random() * 4,
-            18 + Math.random() * 25,
+            smallHeight,
             7 + Math.random() * 4,
-            'modern'
+            smallHeight > 30 ? 'glass_tower' : 'modern'
           );
         }
       }
@@ -837,6 +894,7 @@ export class World {
   }
 
   private createDowntownDistrict(): void {
+    this.currentDistrict = 'downtown';
     // South area - Art Deco buildings like Financial District
     for (let x = -4; x <= 4; x++) {
       for (let z = -8; z <= -5; z++) {
@@ -855,6 +913,7 @@ export class World {
   }
 
   private createResidentialDistrict(): void {
+    this.currentDistrict = 'residential';
     // West side - Brownstones and apartments like Brooklyn/Upper West Side
     for (let x = -5; x <= -3; x++) {
       for (let z = -6; z <= 6; z++) {
@@ -887,6 +946,7 @@ export class World {
   }
 
   private createIndustrialDistrict(): void {
+    this.currentDistrict = 'industrial';
     // East side - Warehouses like DUMBO/Red Hook
     for (let x = 4; x <= 7; x++) {
       for (let z = -6; z <= 6; z++) {
@@ -905,6 +965,7 @@ export class World {
   }
 
   private createUptownDistrict(): void {
+    this.currentDistrict = 'uptown';
     // North side - High-end residential like Upper East Side
     for (let z = 5; z <= 8; z++) {
       for (let x = -3; x <= 3; x++) {
@@ -925,6 +986,7 @@ export class World {
   }
 
   private createWaterfrontDistrict(): void {
+    this.currentDistrict = 'waterfront';
     // West side - Waterfront like Hudson Yards / West Side Highway
     for (let x = -6; x <= -4; x++) {
       for (let z = -3; z <= 5; z++) {
@@ -977,10 +1039,11 @@ export class World {
     }
 
     group.position.set(position.x, height / 2, position.z);
-    this.game.scene.add(group);
+    this.worldGroup.add(group);
 
+    const buildingId = `building_${this.objectIdCounter++}`;
     const body = this.game.physics.createBoxBody(
-      `building_${this.objectIdCounter++}`,
+      buildingId,
       width,
       height,
       depth,
@@ -995,6 +1058,19 @@ export class World {
       type: style === 'brownstone' || style === 'prewar' ? 'residential' : 'commercial',
       style
     };
+
+    // Register building for CityDetailsManager to attach details
+    this.buildingRegistry.set(buildingId, {
+      id: buildingId,
+      position: position.clone(),  // Ground position (y=0)
+      actualY: height / 2,         // Mesh center Y
+      width,
+      height,
+      depth,
+      style,
+      district: this.currentDistrict,
+      mesh: group
+    });
 
     this.buildings.push(building);
     return building;
@@ -1782,7 +1858,7 @@ export class World {
     group.add(light);
 
     group.position.copy(position);
-    this.game.scene.add(group);
+    this.worldGroup.add(group);
 
     const streetLight: StreetLight = {
       mesh: group,
@@ -1932,7 +2008,7 @@ export class World {
       }
     }
 
-    this.game.scene.add(group);
+    this.worldGroup.add(group);
 
     const id = `pickup_${this.pickupIdCounter++}`;
     const pickup: Pickup = {
@@ -2075,7 +2151,7 @@ export class World {
     );
 
     this.game.physics.linkMeshToBody(mesh, body);
-    this.game.scene.add(mesh);
+    this.worldGroup.add(mesh);
 
     const worldObject: WorldObject = {
       id,
@@ -2198,7 +2274,7 @@ export class World {
     hole.position.add(normal.clone().multiplyScalar(0.01));
     hole.lookAt(position.clone().add(normal));
 
-    this.game.scene.add(hole);
+    this.worldGroup.add(hole);
 
     setTimeout(() => {
       this.game.scene.remove(hole);
@@ -2238,7 +2314,7 @@ export class World {
         (Math.random() - 0.5) * 5
       );
 
-      this.game.scene.add(debris);
+      this.worldGroup.add(debris);
 
       const animate = () => {
         debris.position.add(velocity.clone().multiplyScalar(0.016));
@@ -2283,10 +2359,60 @@ export class World {
     return [...this.unlockedAreas];
   }
 
+  // Get building registry for CityDetailsManager to attach details to actual buildings
+  getBuildingRegistry(): Map<string, BuildingMetadata> {
+    return this.buildingRegistry;
+  }
+
   unlockArea(areaId: string): void {
     if (!this.unlockedAreas.includes(areaId)) {
       this.unlockedAreas.push(areaId);
     }
+  }
+
+  /**
+   * Get all static objects for rendering optimization
+   * These objects don't move and can have matrixAutoUpdate disabled
+   */
+  getStaticObjects(): THREE.Object3D[] {
+    const statics: THREE.Object3D[] = [];
+
+    // Buildings are static
+    this.buildings.forEach(b => statics.push(b.mesh));
+
+    // Roads are static
+    statics.push(...this.roads);
+
+    // Ground is static
+    if (this.ground) statics.push(this.ground);
+
+    // Instanced meshes are static
+    if (this.hydrantInstances) statics.push(this.hydrantInstances);
+    if (this.crosswalkStripeInstances) statics.push(this.crosswalkStripeInstances);
+    if (this.trafficLightInstances) statics.push(this.trafficLightInstances);
+
+    return statics;
+  }
+
+  /**
+   * Mark all static world objects to disable unnecessary matrix updates
+   * Call this after initialization to improve render performance
+   */
+  optimizeStaticObjects(): void {
+    const statics = this.getStaticObjects();
+    let count = 0;
+
+    statics.forEach(obj => {
+      obj.traverse(child => {
+        child.userData.isStatic = true;
+        child.matrixAutoUpdate = false;
+        child.updateMatrix();
+        child.updateMatrixWorld(true);
+        count++;
+      });
+    });
+
+    console.log(`✅ Marked ${count} world objects as static`);
   }
 
   dispose(): void {

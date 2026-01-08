@@ -5,6 +5,8 @@ import { PlayerStats, PlayerState, Vehicle, Weapon, InputState } from '@/types';
 import { Game } from '@/core/Game';
 import { globalEvents } from '@/core/EventEmitter';
 import { COLLISION_GROUPS } from '@/physics/PhysicsWorld';
+import { ProceduralCharacterAnimator } from '@/animation/CharacterAnimator';
+import { ClimbingSystem } from './ClimbingSystem';
 
 export class Player {
   private game: Game;
@@ -32,11 +34,11 @@ export class Player {
   private aimTransition: number = 0;
 
   // Animation state
-  private animationTime: number = 0;
   private lastFootstepTime: number = 0;
   private footstepInterval: number = 0.4; // seconds between footsteps
 
   // Body part references for animation
+  private head: THREE.Group | null = null;
   private leftThigh: THREE.Mesh | null = null;
   private rightThigh: THREE.Mesh | null = null;
   private leftCalf: THREE.Mesh | null = null;
@@ -46,6 +48,17 @@ export class Player {
   private leftForearm: THREE.Mesh | null = null;
   private rightForearm: THREE.Mesh | null = null;
   private torso: THREE.Mesh | null = null;
+
+  // Movement tracking for animation sync
+  private actualVelocity: number = 0;
+  private targetRotation: number = 0;
+  private currentTurnSpeed: number = 0;
+
+  // Improved animation system
+  private animator: ProceduralCharacterAnimator;
+
+  // Climbing system
+  private climbingSystem: ClimbingSystem;
 
   constructor(game: Game) {
     this.game = game;
@@ -71,12 +84,19 @@ export class Player {
       isShooting: false,
       isReloading: false,
       isDead: false,
-      currentVehicle: null
+      currentVehicle: null,
+      // Building and climbing states
+      isInBuilding: false,
+      currentBuildingId: null,
+      isClimbing: false,
+      climbingType: 'none'
     };
 
     this.mesh = new THREE.Group();
     this.body = new CANNON.Body({ mass: 80 });
     this.cameraTarget = new THREE.Object3D();
+    this.animator = new ProceduralCharacterAnimator();
+    this.climbingSystem = new ClimbingSystem(game);
   }
 
   get position(): THREE.Vector3 {
@@ -92,6 +112,20 @@ export class Player {
     this.createPhysicsBody();
     this.setupCamera();
     this.setupInputHandlers();
+
+    // Setup animator with body part references
+    this.animator.setBodyParts({
+      head: this.head ?? undefined,
+      torso: this.torso ?? undefined,
+      leftThigh: this.leftThigh ?? undefined,
+      rightThigh: this.rightThigh ?? undefined,
+      leftCalf: this.leftCalf ?? undefined,
+      rightCalf: this.rightCalf ?? undefined,
+      leftUpperArm: this.leftUpperArm ?? undefined,
+      rightUpperArm: this.rightUpperArm ?? undefined,
+      leftForearm: this.leftForearm ?? undefined,
+      rightForearm: this.rightForearm ?? undefined
+    });
 
     this.game.scene.add(this.mesh);
     this.game.scene.add(this.cameraTarget);
@@ -126,21 +160,78 @@ export class Player {
       metalness: 0.1
     });
 
+    // Head group for face details
+    this.head = new THREE.Group();
+    this.head.position.y = 1.65;
+    this.mesh.add(this.head);
+
     // Head - more detailed with slight oval shape
     const headGeometry = new THREE.SphereGeometry(0.14, 16, 16);
     headGeometry.scale(1, 1.1, 0.95);
-    const head = new THREE.Mesh(headGeometry, skinMaterial);
-    head.position.y = 1.65;
-    head.castShadow = true;
-    this.mesh.add(head);
+    const headMesh = new THREE.Mesh(headGeometry, skinMaterial);
+    headMesh.castShadow = true;
+    this.head.add(headMesh);
 
-    // Hair
+    // === FACE DETAILS ===
+    const eyeWhiteMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+    const eyePupilMaterial = new THREE.MeshStandardMaterial({ color: 0x2a1a0a, roughness: 0.2 });
+    const eyebrowMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+    const lipMaterial = new THREE.MeshStandardMaterial({ color: 0xc47a7a, roughness: 0.6 });
+
+    // Eye whites
+    const eyeWhiteGeometry = new THREE.SphereGeometry(0.022, 8, 8);
+    const leftEyeWhite = new THREE.Mesh(eyeWhiteGeometry, eyeWhiteMaterial);
+    leftEyeWhite.position.set(-0.045, 0.02, 0.11);
+    leftEyeWhite.scale.set(1, 0.7, 0.5);
+    this.head.add(leftEyeWhite);
+
+    const rightEyeWhite = new THREE.Mesh(eyeWhiteGeometry, eyeWhiteMaterial);
+    rightEyeWhite.position.set(0.045, 0.02, 0.11);
+    rightEyeWhite.scale.set(1, 0.7, 0.5);
+    this.head.add(rightEyeWhite);
+
+    // Pupils
+    const pupilGeometry = new THREE.SphereGeometry(0.012, 8, 8);
+    const leftPupil = new THREE.Mesh(pupilGeometry, eyePupilMaterial);
+    leftPupil.position.set(-0.045, 0.02, 0.125);
+    this.head.add(leftPupil);
+
+    const rightPupil = new THREE.Mesh(pupilGeometry, eyePupilMaterial);
+    rightPupil.position.set(0.045, 0.02, 0.125);
+    this.head.add(rightPupil);
+
+    // Eyebrows
+    const eyebrowGeometry = new THREE.BoxGeometry(0.04, 0.008, 0.015);
+    const leftEyebrow = new THREE.Mesh(eyebrowGeometry, eyebrowMaterial);
+    leftEyebrow.position.set(-0.045, 0.06, 0.105);
+    leftEyebrow.rotation.z = 0.1;
+    this.head.add(leftEyebrow);
+
+    const rightEyebrow = new THREE.Mesh(eyebrowGeometry, eyebrowMaterial);
+    rightEyebrow.position.set(0.045, 0.06, 0.105);
+    rightEyebrow.rotation.z = -0.1;
+    this.head.add(rightEyebrow);
+
+    // Nose
+    const noseGeometry = new THREE.ConeGeometry(0.015, 0.04, 4);
+    const nose = new THREE.Mesh(noseGeometry, skinMaterial);
+    nose.position.set(0, -0.01, 0.12);
+    nose.rotation.x = Math.PI / 2;
+    this.head.add(nose);
+
+    // Mouth (simple line)
+    const mouthGeometry = new THREE.BoxGeometry(0.04, 0.006, 0.01);
+    const mouth = new THREE.Mesh(mouthGeometry, lipMaterial);
+    mouth.position.set(0, -0.055, 0.11);
+    this.head.add(mouth);
+
+    // Hair (added to head group)
     const hairGeometry = new THREE.SphereGeometry(0.145, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
     const hairMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
     const hair = new THREE.Mesh(hairGeometry, hairMaterial);
-    hair.position.y = 1.68;
+    hair.position.y = 0.03; // Relative to head group
     hair.scale.set(1, 0.8, 1);
-    this.mesh.add(hair);
+    this.head.add(hair);
 
     // Neck
     const neckGeometry = new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8);
@@ -290,8 +381,12 @@ export class Player {
       }
       if (data.action === 'jump') {
         if (this.state.isInVehicle && this.state.currentVehicle) {
-          // Vehicle jump
-          this.jumpVehicle();
+          // Skip vehicle jump for flying vehicles (space is used for pitch control)
+          const vehicleType = this.state.currentVehicle.config.type;
+          if (vehicleType !== 'helicopter' && vehicleType !== 'airplane') {
+            // Vehicle jump (only for ground vehicles)
+            this.jumpVehicle();
+          }
         } else if (this.isGrounded) {
           // Human jump
           this.jump();
@@ -303,6 +398,10 @@ export class Player {
       if (data.action === 'prevWeapon') {
         this.game.weapons.previousWeapon();
       }
+      // Interact key for climbing and building entry
+      if (data.action === 'interact') {
+        this.tryInteract();
+      }
     });
   }
 
@@ -311,12 +410,64 @@ export class Player {
 
     if (this.state.isInVehicle) {
       this.updateInVehicle(deltaTime);
+    } else if (this.state.isClimbing) {
+      this.updateClimbing(deltaTime);
+    } else if (this.state.isInBuilding) {
+      this.updateInBuilding(deltaTime);
     } else {
       this.updateOnFoot(deltaTime);
     }
 
     this.updateCamera(deltaTime);
     this.updateStats(deltaTime);
+  }
+
+  private updateInBuilding(deltaTime: number): void {
+    const input = this.game.input.getState();
+
+    // Simple movement without physics
+    this.updateRotation(input, deltaTime);
+
+    // Get movement direction
+    const moveDir = new THREE.Vector3();
+    if (input.forward) moveDir.z -= 1;
+    if (input.backward) moveDir.z += 1;
+    if (input.left) moveDir.x -= 1;
+    if (input.right) moveDir.x += 1;
+
+    if (moveDir.length() > 0) {
+      moveDir.normalize();
+
+      // Apply rotation to movement direction
+      moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.mesh.rotation.y);
+
+      // Move at walk speed
+      const speed = input.sprint ? 8 : 4;
+      this.mesh.position.add(moveDir.multiplyScalar(speed * deltaTime));
+
+      // Keep within interior bounds (simple clamp)
+      const interior = this.game.interiors.getCurrentInterior();
+      if (interior && interior.layout.rooms.length > 0) {
+        const room = interior.layout.rooms[0];
+        const interiorPos = this.game.interiors.getInteriorScenePosition();
+
+        // Clamp position to room bounds
+        const minX = interiorPos.x + room.bounds.min.x + 0.5;
+        const maxX = interiorPos.x + room.bounds.max.x - 0.5;
+        const minZ = interiorPos.z + room.bounds.min.z + 0.5;
+        const maxZ = interiorPos.z + room.bounds.max.z - 0.5;
+
+        this.mesh.position.x = Math.max(minX, Math.min(maxX, this.mesh.position.x));
+        this.mesh.position.z = Math.max(minZ, Math.min(maxZ, this.mesh.position.z));
+      }
+    }
+
+    // Sync body position for when we exit
+    this.body.position.set(this.mesh.position.x, this.mesh.position.y, this.mesh.position.z);
+
+    // Update animation
+    const velocity = new THREE.Vector3(moveDir.x * 4, 0, moveDir.z * 4);
+    this.animator.update(velocity, deltaTime, true);
   }
 
   private updateOnFoot(deltaTime: number): void {
@@ -329,175 +480,29 @@ export class Player {
   }
 
   private updateAnimation(deltaTime: number): void {
-    // Animation speed depends on movement state
-    const isMoving = this.state.isMoving && this.isGrounded;
-    const isRunning = this.state.isRunning;
-    const isJumping = this.state.isJumping || !this.isGrounded;
+    // Get velocity from physics body
+    const velocity = new THREE.Vector3(
+      this.body.velocity.x,
+      this.body.velocity.y,
+      this.body.velocity.z
+    );
 
-    // More dynamic animation parameters
-    const walkSpeed = isRunning ? 14 : 7; // Faster animation cycle
-    const legSwing = isRunning ? 0.9 : 0.5; // Larger leg rotation
-    const armSwing = isRunning ? 0.8 : 0.4; // Larger arm swing
-    const bobAmount = isRunning ? 0.08 : 0.04; // More vertical bob
-    const hipSway = isRunning ? 0.08 : 0.04; // Hip sway side to side
-    const shoulderTwist = isRunning ? 0.12 : 0.06; // Shoulder rotation
+    // Track actual velocity for other systems
+    this.actualVelocity = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
 
-    if (isMoving) {
-      this.animationTime += deltaTime * walkSpeed;
+    // Use distance-based animator (prevents sliding/moonwalking)
+    this.animator.update(velocity, deltaTime, this.isGrounded);
 
-      const phase = Math.sin(this.animationTime);
-      const phaseOffset = Math.sin(this.animationTime + Math.PI); // Opposite phase
-      const halfPhase = Math.sin(this.animationTime * 2); // Double frequency for bob
-
-      // Dynamic leg animation with more bend and lift
-      if (this.leftThigh) {
-        this.leftThigh.rotation.x = phase * legSwing;
-        // Lift leg higher during swing
-        this.leftThigh.position.y = 0.66 + Math.max(0, phase) * 0.04;
-        // Slight outward rotation during run
-        this.leftThigh.rotation.z = isRunning ? Math.max(0, -phase) * 0.1 : 0;
-      }
-      if (this.rightThigh) {
-        this.rightThigh.rotation.x = phaseOffset * legSwing;
-        this.rightThigh.position.y = 0.66 + Math.max(0, phaseOffset) * 0.04;
-        this.rightThigh.rotation.z = isRunning ? Math.max(0, -phaseOffset) * -0.1 : 0;
-      }
-
-      // More dynamic calf animation - higher knee lift when running
-      if (this.leftCalf) {
-        const leftBend = Math.max(0, -phase) * (isRunning ? 0.8 : 0.5);
-        this.leftCalf.rotation.x = leftBend;
-        this.leftCalf.position.y = 0.32 - leftBend * 0.1;
-        this.leftCalf.position.z = -leftBend * 0.12;
-      }
-      if (this.rightCalf) {
-        const rightBend = Math.max(0, -phaseOffset) * (isRunning ? 0.8 : 0.5);
-        this.rightCalf.rotation.x = rightBend;
-        this.rightCalf.position.y = 0.32 - rightBend * 0.1;
-        this.rightCalf.position.z = -rightBend * 0.12;
-      }
-
-      // Dynamic arm swing with elbow bend
-      if (this.leftUpperArm) {
-        this.leftUpperArm.rotation.x = phaseOffset * armSwing;
-        // Arms swing slightly outward when running
-        this.leftUpperArm.rotation.z = 0.15 + (isRunning ? Math.abs(phaseOffset) * 0.1 : 0);
-      }
-      if (this.rightUpperArm) {
-        this.rightUpperArm.rotation.x = phase * armSwing;
-        this.rightUpperArm.rotation.z = -0.15 - (isRunning ? Math.abs(phase) * 0.1 : 0);
-      }
-
-      // Forearms bend more when running
-      if (this.leftForearm) {
-        const elbowBend = isRunning ? 0.6 : 0.35;
-        this.leftForearm.rotation.x = Math.max(0, phaseOffset) * elbowBend + (isRunning ? 0.3 : 0.1);
-      }
-      if (this.rightForearm) {
-        const elbowBend = isRunning ? 0.6 : 0.35;
-        this.rightForearm.rotation.x = Math.max(0, phase) * elbowBend + (isRunning ? 0.3 : 0.1);
-      }
-
-      // Dynamic torso movement - twist, bob, and lean
-      if (this.torso) {
-        // Shoulder twist opposite to hips
-        this.torso.rotation.y = phase * shoulderTwist;
-        // Vertical bob
-        this.torso.position.y = 1.28 + Math.abs(halfPhase) * bobAmount;
-        // Slight forward lean when running
-        this.torso.rotation.x = isRunning ? 0.1 : 0;
-        // Hip sway (lateral movement)
-        this.torso.position.x = phase * hipSway;
-      }
-
-      // Footstep sounds
+    // Handle footstep sounds based on animation cycle
+    if (this.actualVelocity > 1.0 && this.isGrounded) {
+      const isRunning = this.actualVelocity > 20;
       const currentTime = this.game.getElapsedTime();
       const stepInterval = isRunning ? this.footstepInterval * 0.55 : this.footstepInterval;
+
       if (currentTime - this.lastFootstepTime > stepInterval) {
         this.playFootstep();
         this.lastFootstepTime = currentTime;
       }
-    } else if (isJumping) {
-      // Dynamic jumping pose
-      const jumpPhase = Math.sin(this.animationTime * 3);
-
-      if (this.leftThigh) {
-        this.leftThigh.rotation.x = -0.4;
-        this.leftThigh.rotation.z = 0.1;
-      }
-      if (this.rightThigh) {
-        this.rightThigh.rotation.x = -0.4;
-        this.rightThigh.rotation.z = -0.1;
-      }
-      if (this.leftCalf) {
-        this.leftCalf.rotation.x = 0.5 + jumpPhase * 0.1;
-        this.leftCalf.position.y = 0.3;
-        this.leftCalf.position.z = -0.06;
-      }
-      if (this.rightCalf) {
-        this.rightCalf.rotation.x = 0.5 + jumpPhase * 0.1;
-        this.rightCalf.position.y = 0.3;
-        this.rightCalf.position.z = -0.06;
-      }
-      // Arms up for balance
-      if (this.leftUpperArm) {
-        this.leftUpperArm.rotation.x = -0.6;
-        this.leftUpperArm.rotation.z = 0.4;
-      }
-      if (this.rightUpperArm) {
-        this.rightUpperArm.rotation.x = -0.6;
-        this.rightUpperArm.rotation.z = -0.4;
-      }
-      if (this.leftForearm) this.leftForearm.rotation.x = 0.3;
-      if (this.rightForearm) this.rightForearm.rotation.x = 0.3;
-
-      // Continue animating in air
-      this.animationTime += deltaTime * 5;
-    } else {
-      // Idle pose with subtle breathing animation
-      const breathPhase = Math.sin(this.game.getElapsedTime() * 1.5);
-      const lerpSpeed = 8 * deltaTime;
-
-      if (this.leftThigh) {
-        this.leftThigh.rotation.x *= (1 - lerpSpeed);
-        this.leftThigh.rotation.z *= (1 - lerpSpeed);
-        this.leftThigh.position.y = 0.66;
-      }
-      if (this.rightThigh) {
-        this.rightThigh.rotation.x *= (1 - lerpSpeed);
-        this.rightThigh.rotation.z *= (1 - lerpSpeed);
-        this.rightThigh.position.y = 0.66;
-      }
-      if (this.leftCalf) {
-        this.leftCalf.rotation.x *= (1 - lerpSpeed);
-        this.leftCalf.position.y = 0.32;
-        this.leftCalf.position.z = 0;
-      }
-      if (this.rightCalf) {
-        this.rightCalf.rotation.x *= (1 - lerpSpeed);
-        this.rightCalf.position.y = 0.32;
-        this.rightCalf.position.z = 0;
-      }
-      if (this.leftUpperArm) {
-        this.leftUpperArm.rotation.x *= (1 - lerpSpeed);
-        this.leftUpperArm.rotation.z = 0.15;
-      }
-      if (this.rightUpperArm) {
-        this.rightUpperArm.rotation.x *= (1 - lerpSpeed);
-        this.rightUpperArm.rotation.z = -0.15;
-      }
-      if (this.leftForearm) this.leftForearm.rotation.x *= (1 - lerpSpeed);
-      if (this.rightForearm) this.rightForearm.rotation.x *= (1 - lerpSpeed);
-      if (this.torso) {
-        this.torso.rotation.y *= (1 - lerpSpeed);
-        this.torso.rotation.x *= (1 - lerpSpeed);
-        this.torso.position.x *= (1 - lerpSpeed);
-        // Subtle breathing motion
-        this.torso.position.y = 1.28 + breathPhase * 0.01;
-      }
-
-      // Reset animation time smoothly
-      this.animationTime *= (1 - lerpSpeed);
     }
   }
 
@@ -640,9 +645,23 @@ export class Player {
     let targetLookOffset: THREE.Vector3;
 
     if (this.state.isInVehicle && this.state.currentVehicle) {
-      // Vehicle camera: higher and further back, look at vehicle center
-      targetOffset = new THREE.Vector3(0, 5, 12);
-      targetLookOffset = new THREE.Vector3(0, 1, 0);
+      const vehicleType = this.state.currentVehicle.config.type;
+
+      // Flying vehicles have +Z as forward (nose toward +Z), so camera goes to -Z (behind)
+      // Ground vehicles have -Z as forward (standard Three.js), so camera goes to +Z (behind)
+      if (vehicleType === 'helicopter' || vehicleType === 'airplane') {
+        // Flying vehicle camera: behind the aircraft (negative Z in local space)
+        targetOffset = new THREE.Vector3(0, 6, -15);
+        targetLookOffset = new THREE.Vector3(0, 0, 3); // Look slightly ahead
+      } else {
+        // Ground vehicle camera: higher and further back
+        targetOffset = new THREE.Vector3(0, 5, 12);
+        targetLookOffset = new THREE.Vector3(0, 1, 0);
+      }
+    } else if (this.state.isInBuilding) {
+      // Interior camera: closer and lower for spacious indoor feel
+      targetOffset = new THREE.Vector3(0, 2, 4);
+      targetLookOffset = new THREE.Vector3(0, 1.2, 0);
     } else if (this.state.isAiming) {
       // Aiming camera: over-the-shoulder
       this.aimTransition = Math.min(1, this.aimTransition + deltaTime * 5);
@@ -789,6 +808,172 @@ export class Player {
 
     globalEvents.emit('vehicle_exit', {});
     this.game.audio.playSound('car_door');
+  }
+
+  /**
+   * Try to interact with nearby objects (buildings, ladders, etc.)
+   */
+  tryInteract(): void {
+    console.log('tryInteract called, position:', this.mesh.position.x.toFixed(2), this.mesh.position.z.toFixed(2));
+
+    // If already climbing, stop
+    if (this.state.isClimbing) {
+      this.stopClimbing();
+      return;
+    }
+
+    // If in vehicle, exit
+    if (this.state.isInVehicle) {
+      this.exitVehicle();
+      return;
+    }
+
+    // If in building, exit
+    if (this.state.isInBuilding) {
+      this.exitBuilding();
+      return;
+    }
+
+    // Try to enter building first (larger detection range)
+    const nearbyDoor = this.game.interiors.findNearestDoor(this.mesh.position, 5.0);
+    if (nearbyDoor && nearbyDoor.buildingId) {
+      console.log('Found door:', nearbyDoor.buildingId, 'at distance:', this.mesh.position.distanceTo(nearbyDoor.position).toFixed(2));
+      this.enterBuilding(nearbyDoor.buildingId);
+      return;
+    }
+
+    // Try to start climbing (ladders/ledges)
+    if (this.climbingSystem.tryStartClimbing(this.mesh.position, this.mesh.rotation)) {
+      this.startClimbing();
+      return;
+    }
+
+    // Try to enter vehicle (fallback)
+    this.tryEnterVehicle();
+  }
+
+  /**
+   * Enter a building interior
+   */
+  enterBuilding(buildingId: string): void {
+    const success = this.game.interiors.enterBuilding(buildingId);
+    if (!success) return;
+
+    this.state.isInBuilding = true;
+    this.state.currentBuildingId = buildingId;
+
+    // Remove physics body from world while inside (interior has no physics)
+    this.game.physics.world.removeBody(this.body);
+
+    // Teleport player to interior spawn point
+    const spawnPos = this.game.interiors.getInteriorSpawnPosition();
+    console.log('Entering building, spawn pos:', spawnPos.x.toFixed(1), spawnPos.y.toFixed(1), spawnPos.z.toFixed(1));
+
+    // Set position directly on mesh (physics disabled inside)
+    this.mesh.position.copy(spawnPos);
+    this.body.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
+    this.body.velocity.set(0, 0, 0);
+
+    this.game.audio.playSound('door_open');
+    globalEvents.emit('building_enter', { buildingId });
+  }
+
+  /**
+   * Exit current building
+   */
+  exitBuilding(): void {
+    if (!this.state.isInBuilding) return;
+
+    const exitPos = this.game.interiors.exitBuilding();
+
+    this.state.isInBuilding = false;
+    this.state.currentBuildingId = null;
+
+    // Set position
+    this.mesh.position.copy(exitPos);
+    this.body.position.set(exitPos.x, exitPos.y, exitPos.z);
+    this.body.velocity.set(0, 0, 0);
+
+    // Re-add physics body to world
+    this.game.physics.world.addBody(this.body);
+
+    this.game.audio.playSound('door_open');
+    globalEvents.emit('building_exit', {});
+  }
+
+  /**
+   * Start climbing a ladder/ledge
+   */
+  private startClimbing(): void {
+    this.state.isClimbing = true;
+
+    const climbState = this.climbingSystem.getState();
+    if (climbState.climbState === 'ladder') {
+      this.state.climbingType = 'ladder';
+    } else if (climbState.climbState === 'ledge_grab' || climbState.climbState === 'ledge_shimmy') {
+      this.state.climbingType = 'ledge';
+    }
+
+    // Disable physics while climbing
+    this.body.mass = 0;
+    this.body.velocity.setZero();
+
+    this.game.audio.playSound('climb_start');
+  }
+
+  /**
+   * Stop climbing
+   */
+  private stopClimbing(): void {
+    this.climbingSystem.stopClimbing();
+    this.state.isClimbing = false;
+    this.state.climbingType = 'none';
+
+    // Re-enable physics
+    this.body.mass = 80;
+    this.body.wakeUp();
+  }
+
+  /**
+   * Update climbing movement and animation
+   */
+  private updateClimbing(deltaTime: number): void {
+    const input = this.game.input.getState();
+
+    // Update climbing system
+    this.climbingSystem.update(input, deltaTime, this.body, this.mesh);
+
+    // Check if climbing ended
+    if (!this.climbingSystem.isClimbing()) {
+      this.state.isClimbing = false;
+      this.state.climbingType = 'none';
+      this.body.mass = 80;
+      this.body.wakeUp();
+      return;
+    }
+
+    // Update climbing animation based on state
+    const climbState = this.climbingSystem.getState();
+
+    if (climbState.climbState === 'ladder') {
+      const direction = input.forward ? 1 : input.backward ? -1 : 0;
+      this.animator.animateClimbing(direction, deltaTime);
+      this.state.climbingType = 'ladder';
+    } else if (climbState.climbState === 'ledge_grab' || climbState.climbState === 'ledge_shimmy') {
+      const shimmyDir = input.left ? -1 : input.right ? 1 : 0;
+      this.animator.animateLedgeHang(shimmyDir, deltaTime);
+      this.state.climbingType = 'ledge';
+    } else if (climbState.climbState === 'pulling_up') {
+      this.animator.animatePullUp(climbState.climbProgress);
+      this.state.climbingType = 'pulling_up';
+    }
+
+    // Sync mesh position with physics body (which is controlled by ClimbingSystem)
+    this.mesh.position.set(
+      this.body.position.x,
+      this.body.position.y,
+      this.body.position.z
+    );
   }
 
   takeDamage(amount: number, fromDirection?: THREE.Vector3): void {

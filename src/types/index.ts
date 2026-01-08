@@ -68,6 +68,11 @@ export interface PlayerState {
   isReloading: boolean;
   isDead: boolean;
   currentVehicle: Vehicle | null;
+  // Building and climbing states
+  isInBuilding: boolean;
+  currentBuildingId: string | null;
+  isClimbing: boolean;
+  climbingType: 'none' | 'ladder' | 'ledge' | 'pulling_up';
 }
 
 // Vehicle Types
@@ -86,7 +91,7 @@ export interface VehicleConfig {
   color: number;
 }
 
-export type VehicleType = 'car' | 'motorcycle' | 'truck' | 'boat' | 'helicopter';
+export type VehicleType = 'car' | 'motorcycle' | 'truck' | 'boat' | 'helicopter' | 'airplane';
 
 export interface Vehicle {
   id: string;

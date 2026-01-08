@@ -29,16 +29,30 @@ export class TrafficManager {
 
   private spawnTimer: number = 0;
   private spawnInterval: number = 3;
-  private maxTrafficVehicles: number = 20;
+  private maxTrafficVehicles: number;
+  private isMobile: boolean;
+
+  // Performance: throttle obstacle checks
+  private obstacleCheckAccumulator: number = 0;
+  private obstacleCheckInterval: number = 0.15; // Check obstacles every 150ms
 
   constructor(game: Game) {
     this.game = game;
+
+    // Detect mobile for performance
+    this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+                    ('ontouchstart' in window) ||
+                    window.innerWidth < 768;
+
+    // Reduce traffic on mobile
+    this.maxTrafficVehicles = this.isMobile ? 8 : 15;
+
     this.config = {
-      maxVehicles: 20,
-      maxPedestrians: 30,
-      spawnRadius: 80,
-      despawnRadius: 120,
-      density: 0.5
+      maxVehicles: this.maxTrafficVehicles,
+      maxPedestrians: this.isMobile ? 10 : 30,
+      spawnRadius: this.isMobile ? 60 : 80,
+      despawnRadius: this.isMobile ? 80 : 120,
+      density: this.isMobile ? 0.3 : 0.5
     };
   }
 
@@ -225,7 +239,15 @@ export class TrafficManager {
 
   update(deltaTime: number): void {
     this.updateTrafficLights(deltaTime);
-    this.updateTrafficVehicles(deltaTime);
+
+    // Throttle expensive obstacle checks
+    this.obstacleCheckAccumulator += deltaTime;
+    const shouldCheckObstacles = this.obstacleCheckAccumulator >= this.obstacleCheckInterval;
+    if (shouldCheckObstacles) {
+      this.obstacleCheckAccumulator = 0;
+    }
+
+    this.updateTrafficVehicles(deltaTime, shouldCheckObstacles);
 
     this.spawnTimer += deltaTime;
     if (this.spawnTimer >= this.spawnInterval) {
@@ -279,7 +301,7 @@ export class TrafficManager {
     );
   }
 
-  private updateTrafficVehicles(deltaTime: number): void {
+  private updateTrafficVehicles(deltaTime: number, checkObstacles: boolean = true): void {
     this.trafficVehicles.forEach((traffic, id) => {
       if (traffic.vehicle.destroyed) {
         this.trafficVehicles.delete(id);
@@ -294,7 +316,10 @@ export class TrafficManager {
         return;
       }
 
-      const shouldStop = this.checkForObstacles(traffic) || this.checkForRedLight(traffic);
+      // Only check obstacles when throttle allows (expensive raycast)
+      const shouldStop = checkObstacles
+        ? (this.checkForObstacles(traffic) || this.checkForRedLight(traffic))
+        : this.checkForRedLight(traffic); // Always check red lights (cheap)
 
       if (shouldStop) {
         this.stopVehicle(traffic);
@@ -321,9 +346,13 @@ export class TrafficManager {
     const vehiclePos = traffic.vehicle.mesh.position;
 
     for (const light of this.trafficLights) {
-      const distance = vehiclePos.distanceTo(light.position);
+      // Use squared distance to avoid sqrt (faster)
+      const dx = vehiclePos.x - light.position.x;
+      const dz = vehiclePos.z - light.position.z;
+      const distSq = dx * dx + dz * dz;
 
-      if (distance < 15 && distance > 5) {
+      // 225 = 15^2, 25 = 5^2
+      if (distSq < 225 && distSq > 25) {
         if (light.state === 'red' || light.state === 'yellow') {
           const toLight = light.position.clone().sub(vehiclePos).normalize();
           const forward = new THREE.Vector3(0, 0, 1)
@@ -421,6 +450,20 @@ export class TrafficManager {
   setTrafficDensity(density: number): void {
     this.config.density = Math.max(0, Math.min(1, density));
     this.maxTrafficVehicles = Math.floor(20 * this.config.density);
+  }
+
+  setVisible(visible: boolean): void {
+    // Hide/show traffic vehicles
+    this.trafficVehicles.forEach((tv) => {
+      if (tv.vehicle?.mesh) {
+        tv.vehicle.mesh.visible = visible;
+      }
+    });
+
+    // Hide/show traffic lights
+    this.trafficLights.forEach(light => {
+      light.mesh.visible = visible;
+    });
   }
 
   dispose(): void {

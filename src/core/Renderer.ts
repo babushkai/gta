@@ -243,6 +243,85 @@ export class Renderer {
     }
   }
 
+  /**
+   * Optimize scene for rendering performance
+   * - Ensures frustum culling is enabled on all meshes
+   * - Sets appropriate render order for transparency
+   * - Enables matrix auto-update only where needed
+   */
+  optimizeScene(scene: THREE.Scene): void {
+    let optimizedCount = 0;
+
+    scene.traverse((object) => {
+      // Ensure frustum culling is enabled (it's default but explicitly set)
+      if (object instanceof THREE.Mesh || object instanceof THREE.InstancedMesh) {
+        object.frustumCulled = true;
+
+        // For static objects, disable matrix auto-update after first frame
+        // (handled separately for dynamic objects)
+        if (object.userData.isStatic) {
+          object.matrixAutoUpdate = false;
+          object.updateMatrix();
+        }
+
+        optimizedCount++;
+      }
+
+      // Optimize groups
+      if (object instanceof THREE.Group) {
+        object.frustumCulled = true;
+      }
+    });
+
+    console.log(`✅ Optimized ${optimizedCount} meshes for frustum culling`);
+  }
+
+  /**
+   * Mark objects as static for additional optimization
+   * Static objects don't need matrix updates every frame
+   */
+  markStatic(objects: THREE.Object3D[]): void {
+    objects.forEach(obj => {
+      obj.traverse((child) => {
+        child.userData.isStatic = true;
+        child.matrixAutoUpdate = false;
+        child.updateMatrix();
+        child.updateMatrixWorld(true);
+      });
+    });
+  }
+
+  /**
+   * Get render statistics for debugging
+   */
+  getRenderStats(): {
+    drawCalls: number;
+    triangles: number;
+    points: number;
+    lines: number;
+    textures: number;
+    geometries: number;
+    programs: number;
+  } {
+    const info = this.renderer.info;
+    return {
+      drawCalls: info.render.calls,
+      triangles: info.render.triangles,
+      points: info.render.points,
+      lines: info.render.lines,
+      textures: info.memory.textures,
+      geometries: info.memory.geometries,
+      programs: info.programs?.length ?? 0
+    };
+  }
+
+  /**
+   * Reset render info counters (call at start of frame)
+   */
+  resetRenderInfo(): void {
+    this.renderer.info.reset();
+  }
+
   dispose(): void {
     this.renderer.dispose();
     if (this.composer) {

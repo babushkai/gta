@@ -17,9 +17,12 @@ import { UIManager } from '@/ui/UIManager';
 import { World } from '@/world/World';
 import { CityEventsManager } from '@/world/CityEventsManager';
 import { CityDetailsManager } from '@/world/CityDetailsManager';
+import { InteriorManager } from '@/interiors/InteriorManager';
 import { SaveManager } from './SaveManager';
 import { WeaponSystem } from '@/weapons/WeaponSystem';
 import { NetworkManager } from '@/network/NetworkManager';
+import { AssetManager } from './AssetManager';
+import { PerformanceManager } from './PerformanceManager';
 
 export class Game extends EventEmitter {
   private static instance: Game;
@@ -41,9 +44,12 @@ export class Game extends EventEmitter {
   public world: World;
   public cityEvents: CityEventsManager;
   public cityDetails: CityDetailsManager;
+  public interiors: InteriorManager;
   public save: SaveManager;
   public weapons: WeaponSystem;
   public network: NetworkManager;
+  public assets: AssetManager;
+  public performance: PerformanceManager | null = null;
 
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
@@ -53,6 +59,9 @@ export class Game extends EventEmitter {
   private isPaused: boolean = false;
   private animationFrameId: number | null = null;
   private loadingProgress: number = 0;
+
+  // Store bound handler for cleanup
+  private boundOnResize: (() => void) | null = null;
 
   private constructor() {
     super();
@@ -82,9 +91,11 @@ export class Game extends EventEmitter {
     this.world = new World(this);
     this.cityEvents = new CityEventsManager(this);
     this.cityDetails = new CityDetailsManager(this);
+    this.interiors = new InteriorManager(this);
     this.save = new SaveManager();
     this.weapons = new WeaponSystem(this);
     this.network = new NetworkManager(this);
+    this.assets = AssetManager.getInstance();
   }
 
   static getInstance(): Game {
@@ -137,11 +148,23 @@ export class Game extends EventEmitter {
 
   async initialize(): Promise<void> {
     try {
-      this.updateLoadingProgress(5, 'Initializing renderer...');
+      this.updateLoadingProgress(2, 'Initializing renderer...');
       await this.renderer.initialize(this.scene, this.camera);
       this.input.initialize(this.renderer.getCanvas());
 
-      this.updateLoadingProgress(15, 'Setting up physics...');
+      // Pre-compile shaders during loading to prevent lag when turning around
+      this.updateLoadingProgress(5, 'Pre-compiling shaders...');
+      await this.assets.precompileShaders(
+        this.renderer.getRenderer(),
+        (progress, message) => {
+          // Map shader compilation progress (0-100) to loading progress (5-15)
+          const loadProgress = 5 + (progress / 100) * 10;
+          this.updateLoadingProgress(loadProgress, message);
+        }
+      );
+      this.assets.precacheGeometries();
+
+      this.updateLoadingProgress(18, 'Setting up physics...');
       await this.physics.initialize();
       await this.vehiclePhysics.initialize();
       this.vehiclePhysics.createGroundPlane();
@@ -154,6 +177,9 @@ export class Game extends EventEmitter {
 
       this.updateLoadingProgress(35, 'Adding city details...');
       await this.cityDetails.initialize();
+
+      this.updateLoadingProgress(38, 'Setting up interiors...');
+      await this.interiors.initialize();
 
       this.updateLoadingProgress(40, 'Creating player...');
       await this.player.initialize();
@@ -183,11 +209,20 @@ export class Game extends EventEmitter {
       await this.audio.initialize();
       this.audio.startBackgroundMusic();
 
-      this.updateLoadingProgress(95, 'Setting up UI...');
+      this.updateLoadingProgress(93, 'Setting up UI...');
       await this.ui.initialize();
 
       this.setupEventListeners();
       this.setupWindowResize();
+
+      // Final scene optimization pass
+      this.updateLoadingProgress(97, 'Optimizing scene...');
+      this.world.optimizeStaticObjects();
+      this.cityDetails.optimizeStaticObjects();
+      this.renderer.optimizeScene(this.scene);
+
+      // Initialize performance manager for adaptive quality
+      this.performance = new PerformanceManager(this.scene, this.camera);
 
       this.updateLoadingProgress(100, 'Ready!');
 
@@ -230,14 +265,15 @@ export class Game extends EventEmitter {
   }
 
   private setupWindowResize(): void {
-    window.addEventListener('resize', () => {
+    this.boundOnResize = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
 
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
       this.renderer.resize(width, height);
-    });
+    };
+    window.addEventListener('resize', this.boundOnResize);
   }
 
   start(): void {
@@ -289,9 +325,13 @@ export class Game extends EventEmitter {
     this.world.update(deltaTime);
     this.cityEvents.update(deltaTime);
     this.cityDetails.update(deltaTime);
+    this.interiors.update(deltaTime);
     this.weapons.update(deltaTime);
     this.ui.update(deltaTime);
     this.network.update(deltaTime);
+
+    // 7. Update performance manager (adaptive quality)
+    this.performance?.update(deltaTime);
   }
 
   private render(): void {
@@ -409,6 +449,13 @@ export class Game extends EventEmitter {
 
   dispose(): void {
     this.stop();
+
+    // Remove window resize listener to prevent memory leak
+    if (this.boundOnResize) {
+      window.removeEventListener('resize', this.boundOnResize);
+      this.boundOnResize = null;
+    }
+
     this.renderer.dispose();
     this.physics.dispose();
     this.vehiclePhysics.dispose();
@@ -417,6 +464,7 @@ export class Game extends EventEmitter {
     this.world.dispose();
     this.cityEvents.dispose();
     this.cityDetails.dispose();
+    this.interiors.dispose();
     this.network.dispose();
   }
 }

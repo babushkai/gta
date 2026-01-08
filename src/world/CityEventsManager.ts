@@ -83,6 +83,10 @@ export class CityEventsManager {
   // Pigeon flocks
   private pigeonFlocks: { mesh: THREE.Group; velocity: THREE.Vector3; timer: number }[] = [];
 
+  // Performance: throttle steam vent updates
+  private steamUpdateAccumulator: number = 0;
+  private steamUpdateInterval: number = 0.05; // Update steam every 50ms (20fps) instead of every frame
+
   constructor(game: Game) {
     this.game = game;
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
@@ -1194,8 +1198,12 @@ export class CityEventsManager {
   // ==================== UPDATE LOOP ====================
 
   update(deltaTime: number): void {
-    // Update steam vents
-    this.updateSteamVents(deltaTime);
+    // Throttle steam vent updates for performance
+    this.steamUpdateAccumulator += deltaTime;
+    if (this.steamUpdateAccumulator >= this.steamUpdateInterval) {
+      this.updateSteamVents(this.steamUpdateAccumulator);
+      this.steamUpdateAccumulator = 0;
+    }
 
     // Update active events
     this.events.forEach((event, id) => {

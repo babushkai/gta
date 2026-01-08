@@ -73,6 +73,34 @@ const VEHICLE_CONFIGS: VehicleConfig[] = [
     seats: 2,
     hasRadio: false,
     color: 0xFF6B00 // Orange
+  },
+  {
+    id: 'helicopter',
+    name: 'Maverick',
+    type: 'helicopter',
+    maxSpeed: 180,
+    acceleration: 25,
+    braking: 40,
+    handling: 0.8,
+    mass: 2500,
+    health: 1500,
+    seats: 4,
+    hasRadio: true,
+    color: 0x2C3E50 // Dark blue-gray
+  },
+  {
+    id: 'airplane',
+    name: 'Dodo',
+    type: 'airplane',
+    maxSpeed: 250,
+    acceleration: 35,
+    braking: 30,
+    handling: 0.6,
+    mass: 3000,
+    health: 1200,
+    seats: 2,
+    hasRadio: true,
+    color: 0xECF0F1 // Light gray/white
   }
 ];
 
@@ -81,6 +109,11 @@ export class VehicleManager {
   private vehicles: Map<string, Vehicle> = new Map();
   private vehicleIdCounter: number = 0;
   private garageVehicles: string[] = [];
+
+  // Input state tracking to prevent per-frame triggering
+  private lastHornState: boolean = false;
+  private lastHeadlightState: boolean = false;
+  private lastRadioState: boolean = false;
 
   constructor(game: Game) {
     this.game = game;
@@ -94,7 +127,7 @@ export class VehicleManager {
     // Spawn height for RaycastVehicle - high enough to fall onto wheels
     // Chassis shape is at y+0.5 with half-height 0.25, so bottom is at y+0.25
     // Wheels extend down from y=0, with suspension rest length ~0.3-0.4
-    const spawnPoints = [
+    const groundVehicleSpawns = [
       { x: 10, y: 1.5, z: 10, rotation: 0 },
       { x: -15, y: 1.5, z: 20, rotation: Math.PI / 2 },
       { x: 25, y: 1.5, z: -10, rotation: Math.PI },
@@ -102,14 +135,44 @@ export class VehicleManager {
       { x: 50, y: 1.5, z: 30, rotation: Math.PI / 4 }
     ];
 
-    spawnPoints.forEach((point, index) => {
-      const configIndex = index % VEHICLE_CONFIGS.length;
+    // Spawn ground vehicles
+    const groundConfigs = VEHICLE_CONFIGS.filter(c =>
+      c.type !== 'helicopter' && c.type !== 'airplane'
+    );
+    groundVehicleSpawns.forEach((point, index) => {
+      const configIndex = index % groundConfigs.length;
       this.spawnVehicle(
-        VEHICLE_CONFIGS[configIndex],
+        groundConfigs[configIndex],
         new THREE.Vector3(point.x, point.y, point.z),
         point.rotation
       );
     });
+
+    // Spawn helicopter on rooftop helipad
+    const helicopterConfig = VEHICLE_CONFIGS.find(c => c.type === 'helicopter');
+    if (helicopterConfig) {
+      this.spawnVehicle(
+        helicopterConfig,
+        new THREE.Vector3(80, 35, 80), // On top of a building
+        0
+      );
+      // Second helicopter near industrial area
+      this.spawnVehicle(
+        helicopterConfig,
+        new THREE.Vector3(-100, 15, -50),
+        Math.PI / 2
+      );
+    }
+
+    // Spawn airplane at airstrip (flat area)
+    const airplaneConfig = VEHICLE_CONFIGS.find(c => c.type === 'airplane');
+    if (airplaneConfig) {
+      this.spawnVehicle(
+        airplaneConfig,
+        new THREE.Vector3(150, 2, -100), // East side "airstrip"
+        0
+      );
+    }
   }
 
   spawnVehicle(
@@ -195,6 +258,10 @@ export class VehicleManager {
       this.createMotorcycleMesh(group, config, dim);
     } else if (config.type === 'truck') {
       this.createTruckMesh(group, config, dim, bodyMaterial, glassMaterial, chromeMaterial);
+    } else if (config.type === 'helicopter') {
+      this.createHelicopterMesh(group, config, dim, bodyMaterial, glassMaterial, chromeMaterial);
+    } else if (config.type === 'airplane') {
+      this.createAirplaneMesh(group, config, dim, bodyMaterial, glassMaterial, chromeMaterial);
     } else {
       // Create detailed car based on config id
       if (config.id === 'sports_car') {
@@ -206,14 +273,16 @@ export class VehicleManager {
       }
     }
 
-    // Create wheels
-    const wheelPositions = this.getWheelPositions(config.type, dim);
-    wheelPositions.forEach((pos, index) => {
-      const wheelGroup = this.createDetailedWheel(config.type === 'truck' ? 0.45 : 0.32);
-      wheelGroup.position.copy(pos);
-      wheelGroup.name = `wheel_${index}`;
-      group.add(wheelGroup);
-    });
+    // Create wheels (not for flying vehicles)
+    if (config.type !== 'helicopter' && config.type !== 'airplane') {
+      const wheelPositions = this.getWheelPositions(config.type, dim);
+      wheelPositions.forEach((pos, index) => {
+        const wheelGroup = this.createDetailedWheel(config.type === 'truck' ? 0.45 : 0.32);
+        wheelGroup.position.copy(pos);
+        wheelGroup.name = `wheel_${index}`;
+        group.add(wheelGroup);
+      });
+    }
 
     return group;
   }
@@ -350,101 +419,100 @@ export class VehicleManager {
   private createInterior(
     group: THREE.Group,
     dim: { width: number; height: number; length: number },
-    isSportsCar: boolean = false
+    isLuxury: boolean
   ): void {
-    // Interior materials
-    const leatherMaterial = new THREE.MeshStandardMaterial({
-      color: isSportsCar ? 0x1a1a1a : 0x3a3030,
-      roughness: 0.7,
+    // Interior material
+    const seatMaterial = new THREE.MeshStandardMaterial({
+      color: isLuxury ? 0x2C2C2C : 0x4A4A4A,
+      roughness: 0.8,
       metalness: 0.1
     });
+
     const dashMaterial = new THREE.MeshStandardMaterial({
-      color: 0x222222,
-      roughness: 0.5,
-      metalness: 0.3
-    });
-    const carbonMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2a2a2a,
-      roughness: 0.3,
-      metalness: 0.7
+      color: 0x1A1A1A,
+      roughness: 0.7,
+      metalness: 0.2
     });
 
     // Dashboard
-    const dashGeom = new THREE.BoxGeometry(dim.width * 0.75, dim.height * 0.08, dim.length * 0.15);
+    const dashGeom = new THREE.BoxGeometry(dim.width * 0.85, dim.height * 0.1, dim.length * 0.08);
     const dash = new THREE.Mesh(dashGeom, dashMaterial);
-    dash.position.set(0, dim.height * 0.38, dim.length * 0.05);
+    dash.position.set(0, dim.height * 0.35, dim.length * 0.12);
     group.add(dash);
-
-    // Instrument cluster (glowing)
-    const clusterMaterial = new THREE.MeshStandardMaterial({
-      color: 0x00ff88,
-      emissive: 0x00ff44,
-      emissiveIntensity: 0.3,
-      roughness: 0.2
-    });
-    const clusterGeom = new THREE.BoxGeometry(dim.width * 0.2, dim.height * 0.05, 0.02);
-    const cluster = new THREE.Mesh(clusterGeom, clusterMaterial);
-    cluster.position.set(0, dim.height * 0.42, dim.length * 0.1);
-    cluster.rotation.x = -0.3;
-    group.add(cluster);
-
-    // Center console screen
-    const screenMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2244aa,
-      emissive: 0x112244,
-      emissiveIntensity: 0.5,
-      roughness: 0.1
-    });
-    const screenGeom = new THREE.BoxGeometry(dim.width * 0.15, dim.height * 0.08, 0.01);
-    const screen = new THREE.Mesh(screenGeom, screenMaterial);
-    screen.position.set(0, dim.height * 0.44, dim.length * 0.0);
-    screen.rotation.x = -0.4;
-    group.add(screen);
-
-    // Steering wheel
-    const wheelMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1a1a1a,
-      roughness: 0.5,
-      metalness: 0.3
-    });
-    const steeringRing = new THREE.TorusGeometry(dim.width * 0.08, 0.015, 12, 32);
-    const steering = new THREE.Mesh(steeringRing, wheelMaterial);
-    steering.position.set(0, dim.height * 0.42, dim.length * 0.08);
-    steering.rotation.x = -0.5;
-    group.add(steering);
-
-    // Steering wheel center
-    const steeringCenter = new THREE.CylinderGeometry(dim.width * 0.025, dim.width * 0.025, 0.02, 16);
-    const centerMesh = new THREE.Mesh(steeringCenter, carbonMaterial);
-    centerMesh.position.set(0, dim.height * 0.42, dim.length * 0.08);
-    centerMesh.rotation.x = Math.PI / 2 - 0.5;
-    group.add(centerMesh);
-
-    // Front seats
-    const seatGeom = new THREE.BoxGeometry(dim.width * 0.28, dim.height * 0.18, dim.length * 0.18);
-    [-1, 1].forEach(side => {
-      const seat = new THREE.Mesh(seatGeom, leatherMaterial);
-      seat.position.set(side * dim.width * 0.22, dim.height * 0.35, -dim.length * 0.02);
-      group.add(seat);
-
-      // Seat headrest
-      const headrestGeom = new THREE.BoxGeometry(dim.width * 0.12, dim.height * 0.1, dim.length * 0.05);
-      const headrest = new THREE.Mesh(headrestGeom, leatherMaterial);
-      headrest.position.set(side * dim.width * 0.22, dim.height * 0.52, -dim.length * 0.06);
-      group.add(headrest);
-    });
-
-    // Gear shift
-    const shiftGeom = new THREE.CylinderGeometry(0.02, 0.025, 0.08, 12);
-    const shift = new THREE.Mesh(shiftGeom, carbonMaterial);
-    shift.position.set(0, dim.height * 0.36, -dim.length * 0.02);
-    group.add(shift);
 
     // Center console
     const consoleGeom = new THREE.BoxGeometry(dim.width * 0.12, dim.height * 0.08, dim.length * 0.25);
     const console = new THREE.Mesh(consoleGeom, dashMaterial);
     console.position.set(0, dim.height * 0.32, -dim.length * 0.02);
     group.add(console);
+
+    // Steering wheel
+    const steeringMaterial = new THREE.MeshStandardMaterial({
+      color: 0x222222,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const wheelRingGeom = new THREE.TorusGeometry(dim.width * 0.08, dim.width * 0.015, 8, 24);
+    const steeringWheel = new THREE.Mesh(wheelRingGeom, steeringMaterial);
+    steeringWheel.position.set(-dim.width * 0.22, dim.height * 0.42, dim.length * 0.08);
+    steeringWheel.rotation.x = Math.PI / 2 + 0.4;
+    group.add(steeringWheel);
+
+    // Steering column
+    const columnGeom = new THREE.CylinderGeometry(dim.width * 0.015, dim.width * 0.02, dim.height * 0.15, 8);
+    const column = new THREE.Mesh(columnGeom, steeringMaterial);
+    column.position.set(-dim.width * 0.22, dim.height * 0.36, dim.length * 0.1);
+    column.rotation.x = 0.4;
+    group.add(column);
+
+    // Driver seat
+    const seatGeom = new THREE.BoxGeometry(dim.width * 0.28, dim.height * 0.22, dim.length * 0.2);
+    const driverSeat = new THREE.Mesh(seatGeom, seatMaterial);
+    driverSeat.position.set(-dim.width * 0.22, dim.height * 0.3, -dim.length * 0.06);
+    group.add(driverSeat);
+
+    // Driver seat back
+    const seatBackGeom = new THREE.BoxGeometry(dim.width * 0.26, dim.height * 0.3, dim.length * 0.06);
+    const driverSeatBack = new THREE.Mesh(seatBackGeom, seatMaterial);
+    driverSeatBack.position.set(-dim.width * 0.22, dim.height * 0.48, -dim.length * 0.14);
+    driverSeatBack.rotation.x = 0.15;
+    group.add(driverSeatBack);
+
+    // Passenger seat
+    const passengerSeat = new THREE.Mesh(seatGeom, seatMaterial);
+    passengerSeat.position.set(dim.width * 0.22, dim.height * 0.3, -dim.length * 0.06);
+    group.add(passengerSeat);
+
+    // Passenger seat back
+    const passengerSeatBack = new THREE.Mesh(seatBackGeom, seatMaterial);
+    passengerSeatBack.position.set(dim.width * 0.22, dim.height * 0.48, -dim.length * 0.14);
+    passengerSeatBack.rotation.x = 0.15;
+    group.add(passengerSeatBack);
+
+    // Luxury interior extras
+    if (isLuxury) {
+      // Digital display on dashboard
+      const displayGeom = new THREE.BoxGeometry(dim.width * 0.2, dim.height * 0.05, dim.width * 0.01);
+      const displayMaterial = new THREE.MeshStandardMaterial({
+        color: 0x001122,
+        emissive: 0x003366,
+        emissiveIntensity: 0.3
+      });
+      const display = new THREE.Mesh(displayGeom, displayMaterial);
+      display.position.set(0, dim.height * 0.4, dim.length * 0.14);
+      group.add(display);
+
+      // Gear shifter
+      const shifterGeom = new THREE.CylinderGeometry(dim.width * 0.015, dim.width * 0.02, dim.height * 0.08, 8);
+      const shifterMaterial = new THREE.MeshStandardMaterial({
+        color: 0x888888,
+        roughness: 0.3,
+        metalness: 0.8
+      });
+      const shifter = new THREE.Mesh(shifterGeom, shifterMaterial);
+      shifter.position.set(dim.width * 0.05, dim.height * 0.35, -dim.length * 0.02);
+      group.add(shifter);
+    }
   }
 
   // ==================== SPORTS CAR ====================
@@ -982,6 +1050,30 @@ export class VehicleManager {
       group.add(frontLine);
     });
 
+    // Wheel arch flares (muscular look)
+    const archMaterial = bodyMaterial;
+    [-1, 1].forEach(side => {
+      // Front wheel arch
+      const frontArchGeom = new THREE.BoxGeometry(dim.width * 0.15, dim.height * 0.12, dim.length * 0.2);
+      const frontArch = new THREE.Mesh(frontArchGeom, archMaterial);
+      frontArch.position.set(side * dim.width * 0.48, dim.height * 0.26, dim.length * 0.32);
+      group.add(frontArch);
+
+      // Rear wheel arch (slightly larger)
+      const rearArchGeom = new THREE.BoxGeometry(dim.width * 0.18, dim.height * 0.14, dim.length * 0.22);
+      const rearArch = new THREE.Mesh(rearArchGeom, archMaterial);
+      rearArch.position.set(side * dim.width * 0.48, dim.height * 0.26, -dim.length * 0.32);
+      group.add(rearArch);
+    });
+
+    // Side skirts (body kit look)
+    [-1, 1].forEach(side => {
+      const skirtGeom = new THREE.BoxGeometry(0.04, dim.height * 0.06, dim.length * 0.55);
+      const skirt = new THREE.Mesh(skirtGeom, blackTrimMaterial);
+      skirt.position.set(side * dim.width * 0.52, dim.height * 0.08, 0);
+      group.add(skirt);
+    });
+
     // Exhaust
     const exhaustGeom = new THREE.CylinderGeometry(0.03, 0.035, 0.12, 10);
     const exhaustMaterial = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.3 });
@@ -1100,6 +1192,469 @@ export class VehicleManager {
     group.add(bumper);
   }
 
+  // ==================== HELICOPTER ====================
+  private createHelicopterMesh(
+    group: THREE.Group,
+    config: VehicleConfig,
+    dim: { width: number; height: number; length: number },
+    bodyMaterial: THREE.Material,
+    glassMaterial: THREE.Material,
+    chromeMaterial: THREE.Material
+  ): void {
+    // ==================== REALISTIC HELICOPTER (MD500/Bell 206 Style) ====================
+
+    const darkMetal = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.9, roughness: 0.3 });
+    const lightMetal = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.4 });
+
+    // === MAIN FUSELAGE (egg-shaped cabin) ===
+    // Lower fuselage - rounded bottom
+    const lowerFuselageGeom = new THREE.SphereGeometry(dim.width * 0.55, 24, 16, 0, Math.PI * 2, Math.PI * 0.3, Math.PI * 0.5);
+    const lowerFuselage = new THREE.Mesh(lowerFuselageGeom, bodyMaterial);
+    lowerFuselage.scale.set(1, 0.7, 1.3);
+    lowerFuselage.position.set(0, -dim.height * 0.15, dim.length * 0.12);
+    lowerFuselage.castShadow = true;
+    group.add(lowerFuselage);
+
+    // Upper fuselage - cabin roof
+    const upperFuselageGeom = new THREE.SphereGeometry(dim.width * 0.5, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.4);
+    const upperFuselage = new THREE.Mesh(upperFuselageGeom, bodyMaterial);
+    upperFuselage.scale.set(1, 0.6, 1.2);
+    upperFuselage.position.set(0, dim.height * 0.1, dim.length * 0.1);
+    upperFuselage.castShadow = true;
+    group.add(upperFuselage);
+
+    // Engine cowling (top rear)
+    const engineCowlGeom = new THREE.CylinderGeometry(dim.width * 0.35, dim.width * 0.4, dim.length * 0.25, 16);
+    const engineCowl = new THREE.Mesh(engineCowlGeom, bodyMaterial);
+    engineCowl.rotation.x = Math.PI / 2;
+    engineCowl.position.set(0, dim.height * 0.2, -dim.length * 0.05);
+    engineCowl.castShadow = true;
+    group.add(engineCowl);
+
+    // Engine intake (top)
+    const intakeGeom = new THREE.BoxGeometry(dim.width * 0.3, dim.height * 0.15, dim.length * 0.2);
+    const intake = new THREE.Mesh(intakeGeom, darkMetal);
+    intake.position.set(0, dim.height * 0.35, -dim.length * 0.02);
+    group.add(intake);
+
+    // Intake grill
+    const grillGeom = new THREE.PlaneGeometry(dim.width * 0.25, dim.height * 0.1);
+    const grillMat = new THREE.MeshStandardMaterial({ color: 0x111111, side: THREE.DoubleSide });
+    const grill = new THREE.Mesh(grillGeom, grillMat);
+    grill.position.set(0, dim.height * 0.36, dim.length * 0.08);
+    grill.rotation.x = -Math.PI / 6;
+    group.add(grill);
+
+    // === COCKPIT GLASS (bubble canopy) ===
+    const cockpitGeom = new THREE.SphereGeometry(dim.width * 0.48, 32, 24, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    const tintedGlass = new THREE.MeshStandardMaterial({
+      color: 0x335566,
+      roughness: 0.02,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.4,
+      envMapIntensity: 1.0
+    });
+    const cockpit = new THREE.Mesh(cockpitGeom, tintedGlass);
+    cockpit.scale.set(0.95, 0.7, 1.1);
+    cockpit.position.set(0, dim.height * 0.05, dim.length * 0.28);
+    cockpit.rotation.x = -Math.PI * 0.15;
+    group.add(cockpit);
+
+    // Cockpit frame (windshield divider)
+    const frameGeom = new THREE.BoxGeometry(0.03, dim.height * 0.3, dim.length * 0.02);
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+    const frame = new THREE.Mesh(frameGeom, frameMat);
+    frame.position.set(0, dim.height * 0.1, dim.length * 0.42);
+    frame.rotation.x = -0.2;
+    group.add(frame);
+
+    // Door frames
+    [-1, 1].forEach(side => {
+      const doorFrame = new THREE.Mesh(
+        new THREE.BoxGeometry(0.02, dim.height * 0.35, dim.length * 0.25),
+        frameMat
+      );
+      doorFrame.position.set(side * dim.width * 0.48, 0, dim.length * 0.15);
+      group.add(doorFrame);
+    });
+
+    // === TAIL BOOM (tapered) ===
+    const tailBoomGeom = new THREE.CylinderGeometry(0.12, 0.22, dim.length * 0.55, 12);
+    const tailBoom = new THREE.Mesh(tailBoomGeom, bodyMaterial);
+    tailBoom.rotation.z = Math.PI / 2;
+    tailBoom.position.set(0, dim.height * 0.05, -dim.length * 0.38);
+    tailBoom.castShadow = true;
+    group.add(tailBoom);
+
+    // Tail boom spine (top reinforcement)
+    const spineGeom = new THREE.BoxGeometry(0.04, 0.08, dim.length * 0.5);
+    const spine = new THREE.Mesh(spineGeom, darkMetal);
+    spine.position.set(0, dim.height * 0.15, -dim.length * 0.35);
+    group.add(spine);
+
+    // === TAIL SECTION ===
+    // Vertical stabilizer (fin)
+    const tailFinShape = new THREE.Shape();
+    tailFinShape.moveTo(0, 0);
+    tailFinShape.lineTo(0.4, 0);
+    tailFinShape.lineTo(0.5, 0.8);
+    tailFinShape.lineTo(0.1, 0.8);
+    tailFinShape.lineTo(0, 0);
+
+    const tailFinGeom = new THREE.ExtrudeGeometry(tailFinShape, { depth: 0.06, bevelEnabled: false });
+    const tailFin = new THREE.Mesh(tailFinGeom, bodyMaterial);
+    tailFin.rotation.y = Math.PI / 2;
+    tailFin.position.set(0.03, dim.height * 0.05, -dim.length * 0.55);
+    tailFin.castShadow = true;
+    group.add(tailFin);
+
+    // Horizontal stabilizer
+    const hStabGeom = new THREE.BoxGeometry(dim.width * 0.7, 0.05, 0.25);
+    const hStab = new THREE.Mesh(hStabGeom, bodyMaterial);
+    hStab.position.set(0, dim.height * 0.08, -dim.length * 0.52);
+    group.add(hStab);
+
+    // Stabilizer end plates
+    [-1, 1].forEach(side => {
+      const endPlate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.12, 0.2),
+        bodyMaterial
+      );
+      endPlate.position.set(side * dim.width * 0.35, dim.height * 0.08, -dim.length * 0.52);
+      group.add(endPlate);
+    });
+
+    // === TAIL ROTOR ASSEMBLY ===
+    // Tail rotor housing/shroud
+    const shroudGeom = new THREE.TorusGeometry(dim.height * 0.22, 0.04, 8, 24);
+    const shroud = new THREE.Mesh(shroudGeom, darkMetal);
+    shroud.position.set(0.18, dim.height * 0.45, -dim.length * 0.55);
+    shroud.rotation.y = Math.PI / 2;
+    group.add(shroud);
+
+    // Tail rotor hub
+    const tailHubGeom = new THREE.CylinderGeometry(0.06, 0.06, 0.08, 12);
+    const tailHub = new THREE.Mesh(tailHubGeom, chromeMaterial);
+    tailHub.rotation.z = Math.PI / 2;
+    tailHub.position.set(0.22, dim.height * 0.45, -dim.length * 0.55);
+    group.add(tailHub);
+
+    // Tail rotor blades (will animate)
+    const tailRotorGroup = new THREE.Group();
+    tailRotorGroup.name = 'tail_rotor';
+    const tailBladeGeom = new THREE.BoxGeometry(0.04, dim.height * 0.38, 0.06);
+    const bladeMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.8, roughness: 0.3 });
+
+    for (let i = 0; i < 4; i++) {
+      const tailBlade = new THREE.Mesh(tailBladeGeom, bladeMaterial);
+      tailBlade.rotation.x = (i / 4) * Math.PI * 2;
+      tailRotorGroup.add(tailBlade);
+    }
+    tailRotorGroup.position.set(0.24, dim.height * 0.45, -dim.length * 0.55);
+    tailRotorGroup.rotation.z = Math.PI / 2;
+    group.add(tailRotorGroup);
+
+    // === MAIN ROTOR ASSEMBLY ===
+    // Rotor mast
+    const mastGeom = new THREE.CylinderGeometry(0.08, 0.1, dim.height * 0.25, 12);
+    const mast = new THREE.Mesh(mastGeom, chromeMaterial);
+    mast.position.set(0, dim.height * 0.35, dim.length * 0.02);
+    group.add(mast);
+
+    // Swashplate (complex hub)
+    const swashGeom = new THREE.CylinderGeometry(0.2, 0.18, 0.08, 16);
+    const swash = new THREE.Mesh(swashGeom, lightMetal);
+    swash.position.set(0, dim.height * 0.45, dim.length * 0.02);
+    group.add(swash);
+
+    // Main rotor hub
+    const rotorHubGeom = new THREE.CylinderGeometry(0.12, 0.15, 0.1, 16);
+    const rotorHub = new THREE.Mesh(rotorHubGeom, chromeMaterial);
+    rotorHub.position.set(0, dim.height * 0.52, dim.length * 0.02);
+    group.add(rotorHub);
+
+    // Main rotor blades (will animate)
+    const rotorGroup = new THREE.Group();
+    rotorGroup.name = 'main_rotor';
+
+    for (let i = 0; i < 4; i++) {
+      // Blade grip
+      const gripGeom = new THREE.BoxGeometry(0.25, 0.06, 0.12);
+      const grip = new THREE.Mesh(gripGeom, darkMetal);
+      grip.position.x = 0.15;
+
+      // Main blade (tapered)
+      const bladeShape = new THREE.Shape();
+      bladeShape.moveTo(0, -0.08);
+      bladeShape.lineTo(dim.width * 2.2, -0.06);
+      bladeShape.lineTo(dim.width * 2.3, 0);
+      bladeShape.lineTo(dim.width * 2.2, 0.06);
+      bladeShape.lineTo(0, 0.08);
+      bladeShape.lineTo(0, -0.08);
+
+      const bladeGeom = new THREE.ExtrudeGeometry(bladeShape, { depth: 0.025, bevelEnabled: false });
+      const blade = new THREE.Mesh(bladeGeom, bladeMaterial);
+      blade.position.set(0.25, -0.012, 0);
+
+      const bladeGroup = new THREE.Group();
+      bladeGroup.add(grip);
+      bladeGroup.add(blade);
+      bladeGroup.rotation.y = (i / 4) * Math.PI * 2;
+      rotorGroup.add(bladeGroup);
+    }
+    rotorGroup.position.set(0, dim.height * 0.55, dim.length * 0.02);
+    group.add(rotorGroup);
+
+    // === LANDING SKIDS ===
+    const skidMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.6, metalness: 0.4 });
+
+    [-1, 1].forEach(side => {
+      // Main skid tube (curved front)
+      const skidPath = new THREE.CurvePath<THREE.Vector3>();
+      skidPath.add(new THREE.LineCurve3(
+        new THREE.Vector3(0, 0, -dim.length * 0.2),
+        new THREE.Vector3(0, 0, dim.length * 0.15)
+      ));
+      skidPath.add(new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(0, 0, dim.length * 0.15),
+        new THREE.Vector3(0, 0.1, dim.length * 0.25),
+        new THREE.Vector3(0, 0.2, dim.length * 0.28)
+      ));
+
+      const skidGeom = new THREE.TubeGeometry(skidPath, 16, 0.035, 8, false);
+      const skid = new THREE.Mesh(skidGeom, skidMaterial);
+      skid.position.set(side * dim.width * 0.42, -dim.height * 0.4, 0);
+      skid.castShadow = true;
+      group.add(skid);
+
+      // Skid struts (angled)
+      const strutGeom = new THREE.CylinderGeometry(0.025, 0.025, dim.height * 0.35, 8);
+
+      // Front strut
+      const frontStrut = new THREE.Mesh(strutGeom, skidMaterial);
+      frontStrut.position.set(side * dim.width * 0.42, -dim.height * 0.22, dim.length * 0.12);
+      frontStrut.rotation.z = side * 0.15;
+      group.add(frontStrut);
+
+      // Rear strut
+      const rearStrut = new THREE.Mesh(strutGeom, skidMaterial);
+      rearStrut.position.set(side * dim.width * 0.42, -dim.height * 0.22, -dim.length * 0.1);
+      rearStrut.rotation.z = side * 0.15;
+      group.add(rearStrut);
+
+      // Cross tube
+      const crossGeom = new THREE.CylinderGeometry(0.02, 0.02, dim.width * 0.84, 8);
+      const crossTube = new THREE.Mesh(crossGeom, skidMaterial);
+      crossTube.rotation.z = Math.PI / 2;
+      crossTube.position.set(0, -dim.height * 0.4, dim.length * 0.02);
+      if (side === 1) group.add(crossTube); // Only add once
+    });
+
+    // === ENGINE EXHAUST ===
+    const exhaustGeom = new THREE.CylinderGeometry(0.08, 0.1, 0.35, 12);
+    const exhaustMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.95, roughness: 0.2 });
+    const exhaust = new THREE.Mesh(exhaustGeom, exhaustMat);
+    exhaust.rotation.x = Math.PI / 2 + 0.2;
+    exhaust.position.set(0, dim.height * 0.18, -dim.length * 0.18);
+    group.add(exhaust);
+
+    // Exhaust heat shimmer ring
+    const heatRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.06, 0.015, 8, 16),
+      new THREE.MeshBasicMaterial({ color: 0x332211, transparent: true, opacity: 0.3 })
+    );
+    heatRing.position.set(0, dim.height * 0.12, -dim.length * 0.22);
+    heatRing.rotation.x = Math.PI / 2;
+    heatRing.name = 'exhaust_heat';
+    group.add(heatRing);
+
+    // === NAVIGATION LIGHTS ===
+    // Anti-collision beacon (top)
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), beaconMat);
+    beacon.position.set(0, dim.height * 0.58, dim.length * 0.02);
+    beacon.name = 'beacon';
+    group.add(beacon);
+
+    // Position lights (wingtip style on skid struts)
+    const redLight = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    redLight.position.set(-dim.width * 0.42, -dim.height * 0.05, dim.length * 0.12);
+    group.add(redLight);
+
+    const greenLight = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+    greenLight.position.set(dim.width * 0.42, -dim.height * 0.05, dim.length * 0.12);
+    group.add(greenLight);
+
+    // Tail light (white)
+    const tailLight = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    tailLight.position.set(0, dim.height * 0.1, -dim.length * 0.58);
+    group.add(tailLight);
+
+    // Landing light (under nose)
+    const landingLight = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffffcc })
+    );
+    landingLight.rotation.x = Math.PI / 2;
+    landingLight.position.set(0, -dim.height * 0.25, dim.length * 0.35);
+    landingLight.name = 'landing_light';
+    group.add(landingLight);
+
+    // === DETAILS ===
+    // Pitot tube (airspeed sensor)
+    const pitotGeom = new THREE.CylinderGeometry(0.008, 0.008, 0.15, 6);
+    const pitot = new THREE.Mesh(pitotGeom, chromeMaterial);
+    pitot.rotation.x = Math.PI / 2;
+    pitot.position.set(-dim.width * 0.35, dim.height * 0.05, dim.length * 0.4);
+    group.add(pitot);
+
+    // Antenna
+    const antennaGeom = new THREE.CylinderGeometry(0.005, 0.005, 0.3, 6);
+    const antenna = new THREE.Mesh(antennaGeom, darkMetal);
+    antenna.position.set(0, dim.height * 0.25, -dim.length * 0.15);
+    group.add(antenna);
+  }
+
+  // ==================== AIRPLANE ====================
+  private createAirplaneMesh(
+    group: THREE.Group,
+    config: VehicleConfig,
+    dim: { width: number; height: number; length: number },
+    bodyMaterial: THREE.Material,
+    glassMaterial: THREE.Material,
+    chromeMaterial: THREE.Material
+  ): void {
+    // Fuselage (main body)
+    const fuselageGeom = new THREE.CylinderGeometry(0.8, 0.6, dim.length, 16);
+    const fuselage = new THREE.Mesh(fuselageGeom, bodyMaterial);
+    fuselage.rotation.z = Math.PI / 2;
+    fuselage.castShadow = true;
+    group.add(fuselage);
+
+    // Nose cone
+    const noseGeom = new THREE.ConeGeometry(0.6, 1.5, 16);
+    const nose = new THREE.Mesh(noseGeom, bodyMaterial);
+    nose.rotation.z = -Math.PI / 2;
+    nose.position.set(0, 0, dim.length * 0.55);
+    group.add(nose);
+
+    // Cockpit windshield
+    const windshieldGeom = new THREE.BoxGeometry(0.8, 0.4, 1.2);
+    const windshield = new THREE.Mesh(windshieldGeom, glassMaterial);
+    windshield.position.set(0, 0.5, dim.length * 0.25);
+    windshield.rotation.x = -0.2;
+    group.add(windshield);
+
+    // Main wings
+    const wingGeom = new THREE.BoxGeometry(dim.width, 0.1, 1.5);
+    const wingMaterial = new THREE.MeshStandardMaterial({
+      color: (bodyMaterial as THREE.MeshStandardMaterial).color,
+      roughness: 0.3,
+      metalness: 0.7
+    });
+    const wings = new THREE.Mesh(wingGeom, wingMaterial);
+    wings.position.set(0, -0.2, 0);
+    wings.castShadow = true;
+    group.add(wings);
+
+    // Wing tips (slightly angled up)
+    [-1, 1].forEach(side => {
+      const wingTipGeom = new THREE.BoxGeometry(0.5, 0.3, 0.8);
+      const wingTip = new THREE.Mesh(wingTipGeom, wingMaterial);
+      wingTip.position.set(side * (dim.width * 0.5 + 0.2), 0, 0);
+      wingTip.rotation.z = side * 0.3;
+      group.add(wingTip);
+    });
+
+    // Tail section
+    const tailGeom = new THREE.CylinderGeometry(0.4, 0.6, dim.length * 0.3, 12);
+    const tail = new THREE.Mesh(tailGeom, bodyMaterial);
+    tail.rotation.z = Math.PI / 2;
+    tail.position.set(0, 0, -dim.length * 0.45);
+    group.add(tail);
+
+    // Vertical stabilizer (tail fin)
+    const vStabGeom = new THREE.BoxGeometry(0.1, 1.5, 1.2);
+    const vStab = new THREE.Mesh(vStabGeom, wingMaterial);
+    vStab.position.set(0, 0.8, -dim.length * 0.4);
+    group.add(vStab);
+
+    // Horizontal stabilizers
+    const hStabGeom = new THREE.BoxGeometry(3, 0.08, 0.8);
+    const hStab = new THREE.Mesh(hStabGeom, wingMaterial);
+    hStab.position.set(0, 0.1, -dim.length * 0.45);
+    group.add(hStab);
+
+    // Propeller hub
+    const propHubGeom = new THREE.CylinderGeometry(0.15, 0.15, 0.3, 16);
+    const propHub = new THREE.Mesh(propHubGeom, chromeMaterial);
+    propHub.rotation.x = Math.PI / 2;
+    propHub.position.set(0, 0, dim.length * 0.6);
+    group.add(propHub);
+
+    // Propeller blades (will animate)
+    const propGroup = new THREE.Group();
+    propGroup.name = 'propeller';
+    const propBladeGeom = new THREE.BoxGeometry(0.15, 2, 0.05);
+    const propBladeMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8 });
+    for (let i = 0; i < 3; i++) {
+      const blade = new THREE.Mesh(propBladeGeom, propBladeMat);
+      blade.rotation.z = (i / 3) * Math.PI * 2;
+      propGroup.add(blade);
+    }
+    propGroup.position.set(0, 0, dim.length * 0.65);
+    group.add(propGroup);
+
+    // Landing gear - front wheel
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+    const frontWheelGeom = new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16);
+    const frontWheel = new THREE.Mesh(frontWheelGeom, wheelMat);
+    frontWheel.rotation.z = Math.PI / 2;
+    frontWheel.position.set(0, -0.9, dim.length * 0.35);
+    group.add(frontWheel);
+
+    // Front gear strut
+    const frontStrutGeom = new THREE.CylinderGeometry(0.03, 0.03, 0.6, 8);
+    const strutMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8 });
+    const frontStrut = new THREE.Mesh(frontStrutGeom, strutMat);
+    frontStrut.position.set(0, -0.6, dim.length * 0.35);
+    group.add(frontStrut);
+
+    // Main landing gear (under wings)
+    [-1, 1].forEach(side => {
+      const mainWheelGeom = new THREE.CylinderGeometry(0.2, 0.2, 0.15, 16);
+      const mainWheel = new THREE.Mesh(mainWheelGeom, wheelMat);
+      mainWheel.rotation.z = Math.PI / 2;
+      mainWheel.position.set(side * 1.5, -0.95, -0.2);
+      group.add(mainWheel);
+
+      const mainStrutGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.7, 8);
+      const mainStrut = new THREE.Mesh(mainStrutGeom, strutMat);
+      mainStrut.position.set(side * 1.5, -0.6, -0.2);
+      group.add(mainStrut);
+    });
+
+    // Engine cowling on wings
+    [-1, 1].forEach(side => {
+      const cowlGeom = new THREE.CylinderGeometry(0.3, 0.25, 0.8, 12);
+      const cowl = new THREE.Mesh(cowlGeom, bodyMaterial);
+      cowl.rotation.x = Math.PI / 2;
+      cowl.position.set(side * 2.5, -0.1, 0.3);
+      group.add(cowl);
+    });
+
+    // Navigation lights
+    const redLightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const greenLightMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const redNav = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), redLightMat);
+    redNav.position.set(-dim.width * 0.5 - 0.25, 0, 0);
+    group.add(redNav);
+    const greenNav = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), greenLightMat);
+    greenNav.position.set(dim.width * 0.5 + 0.25, 0, 0);
+    group.add(greenNav);
+  }
+
   private getVehicleDimensions(type: VehicleType): {
     width: number;
     height: number;
@@ -1110,8 +1665,14 @@ export class VehicleManager {
         return { width: 0.8, height: 1.2, length: 2.2 };
       case 'truck':
         return { width: 2.5, height: 2.5, length: 6 };
+      case 'helicopter':
+        return { width: 2.5, height: 3, length: 10 }; // Including tail boom
+      case 'airplane':
+        return { width: 12, height: 3, length: 8 }; // Wingspan as width
       default:
-        return { width: 2, height: 1.5, length: 4.5 };
+        // Cars: wider and lower for more realistic proportions
+        // Width increased for better stability and more aggressive stance
+        return { width: 2.4, height: 1.35, length: 4.8 };
     }
   }
 
@@ -1269,6 +1830,18 @@ export class VehicleManager {
   syncWithPhysics(): void {
     this.vehicles.forEach(vehicle => {
       if (!vehicle.destroyed) {
+        // Skip physics sync for flying vehicles - they use direct mesh manipulation
+        const isFlying = vehicle.config.type === 'helicopter' || vehicle.config.type === 'airplane';
+        if (isFlying && vehicle.driver?.id === 'player') {
+          // For flying vehicles, update physics body from mesh (not the other way around)
+          this.game.vehiclePhysics.setVehicleTransform(
+            vehicle.id,
+            vehicle.mesh.position,
+            vehicle.mesh.quaternion
+          );
+          return;
+        }
+
         // Get chassis transform from Rapier
         const transform = this.game.vehiclePhysics.getVehicleTransform(vehicle.id);
         if (transform) {
@@ -1293,16 +1866,273 @@ export class VehicleManager {
   private updateVehicle(vehicle: Vehicle, deltaTime: number): void {
     if (vehicle.destroyed) return;
 
-    // Wheel rotation is now handled by RaycastVehicle physics
-    // No need for manual animation
+    // Handle flying vehicles separately
+    const isFlying = vehicle.config.type === 'helicopter' || vehicle.config.type === 'airplane';
+
+    if (isFlying) {
+      // Animate rotors/propellers
+      this.animateAircraftParts(vehicle, deltaTime);
+    }
 
     // Handle player driving input
     if (vehicle.driver?.id === 'player') {
-      this.handlePlayerDriving(vehicle, deltaTime);
+      if (isFlying) {
+        this.handlePlayerFlying(vehicle, deltaTime);
+      } else {
+        this.handlePlayerDriving(vehicle, deltaTime);
+      }
     }
 
     if (vehicle.health <= 0 && !vehicle.destroyed) {
       this.destroyVehicle(vehicle);
+    }
+  }
+
+  private animateAircraftParts(vehicle: Vehicle, deltaTime: number): void {
+    const isEngineOn = vehicle.driver !== null;
+    const rotorSpeed = isEngineOn ? 25 : 2; // Fast when running, slow idle
+
+    if (vehicle.config.type === 'helicopter') {
+      // Main rotor
+      const mainRotor = vehicle.mesh.getObjectByName('main_rotor');
+      if (mainRotor) {
+        mainRotor.rotation.y += rotorSpeed * deltaTime;
+      }
+      // Tail rotor
+      const tailRotor = vehicle.mesh.getObjectByName('tail_rotor');
+      if (tailRotor) {
+        tailRotor.rotation.y += rotorSpeed * 1.5 * deltaTime;
+      }
+    } else if (vehicle.config.type === 'airplane') {
+      // Propeller
+      const propeller = vehicle.mesh.getObjectByName('propeller');
+      if (propeller) {
+        propeller.rotation.z += rotorSpeed * deltaTime;
+      }
+    }
+  }
+
+  private handlePlayerFlying(vehicle: Vehicle, deltaTime: number): void {
+    const input = this.game.input.getState();
+    const pos = vehicle.mesh.position;
+    const rot = vehicle.mesh.rotation;
+
+    // Calculate direction vectors from current rotation
+    const forward = new THREE.Vector3(0, 0, 1).applyEuler(rot);
+    const right = new THREE.Vector3(1, 0, 0).applyEuler(rot);
+    const up = new THREE.Vector3(0, 1, 0);
+
+    if (vehicle.config.type === 'helicopter') {
+      // ==================== REALISTIC HELICOPTER CONTROLS ====================
+      // W/S = Pitch forward/back (cyclic) - tilts helicopter to move
+      // A/D = Yaw left/right (tail rotor) - spins helicopter
+      // Space = Collective up (ascend)
+      // C = Collective down (descend)
+      // Shift = Speed boost when moving
+
+      const maxTiltAngle = 0.35; // ~20 degrees max tilt
+      const tiltSpeed = 2.5;
+      const yawSpeed = 2.0;
+      const liftPower = 18;
+      const movementSpeed = 25;
+      const gravity = 12;
+
+      // Collective (altitude control)
+      let collectiveInput = 0;
+      if (input.jump) collectiveInput = 1;      // Space = go up
+      if (input.crouch) collectiveInput = -1;   // C = go down
+
+      // Cyclic (tilt control for movement)
+      let pitchInput = 0;  // Forward/back tilt
+      let rollInput = 0;   // Left/right tilt (strafe)
+
+      if (input.forward) pitchInput = 1;   // W = tilt forward (move forward)
+      if (input.backward) pitchInput = -1; // S = tilt backward (move backward)
+
+      // Yaw (rotation)
+      let yawInput = 0;
+      if (input.left) yawInput = 1;    // A = rotate left
+      if (input.right) yawInput = -1;  // D = rotate right
+
+      // Strafe with Shift+A/D
+      if (input.sprint) {
+        if (input.left) { rollInput = -1; yawInput = 0; }   // Shift+A = strafe left
+        if (input.right) { rollInput = 1; yawInput = 0; }   // Shift+D = strafe right
+      }
+
+      // Speed boost
+      const speedMultiplier = input.sprint && pitchInput !== 0 ? 1.5 : 1.0;
+
+      // Apply tilt (cyclic)
+      const targetPitch = -pitchInput * maxTiltAngle; // Negative because forward tilt = negative X rotation
+      const targetRoll = rollInput * maxTiltAngle;
+      rot.x = THREE.MathUtils.lerp(rot.x, targetPitch, deltaTime * tiltSpeed);
+      rot.z = THREE.MathUtils.lerp(rot.z, targetRoll, deltaTime * tiltSpeed);
+
+      // Apply yaw (tail rotor)
+      rot.y += yawInput * yawSpeed * deltaTime;
+
+      // Calculate lift force
+      let lift = 0;
+
+      // Base hover lift (counteracts gravity when collective is neutral)
+      if (collectiveInput > 0) {
+        lift = collectiveInput * liftPower * deltaTime;
+      } else if (collectiveInput < 0) {
+        lift = collectiveInput * liftPower * 0.7 * deltaTime; // Descend slower
+      } else {
+        // Hover - slight lift to counteract gravity at neutral
+        lift = -gravity * 0.3 * deltaTime;
+      }
+
+      // Gravity
+      lift -= gravity * deltaTime;
+
+      // Movement from tilt
+      const tiltMagnitude = Math.sqrt(rot.x * rot.x + rot.z * rot.z);
+      if (tiltMagnitude > 0.05) {
+        // Move in direction of tilt
+        const moveDir = new THREE.Vector3(
+          Math.sin(rot.z),
+          0,
+          -Math.sin(rot.x)
+        ).applyAxisAngle(up, rot.y);
+
+        const speed = tiltMagnitude * movementSpeed * speedMultiplier * deltaTime;
+        pos.add(moveDir.multiplyScalar(speed));
+      }
+
+      // Apply lift
+      pos.y += lift;
+
+      // Ground collision
+      if (pos.y < 1.5) {
+        pos.y = 1.5;
+        // Level out when on ground
+        rot.x = THREE.MathUtils.lerp(rot.x, 0, deltaTime * 3);
+        rot.z = THREE.MathUtils.lerp(rot.z, 0, deltaTime * 3);
+      }
+
+      // Max altitude
+      if (pos.y > 200) pos.y = 200;
+
+      // Calculate speed for display
+      const heliSpeed = tiltMagnitude * movementSpeed * speedMultiplier;
+      vehicle.currentSpeed = heliSpeed;
+
+    } else if (vehicle.config.type === 'airplane') {
+      // ==================== REALISTIC AIRPLANE CONTROLS ====================
+      // W = Throttle up (accelerate)
+      // S = Throttle down / brake
+      // A/D = Roll (bank left/right) - causes turning
+      // Space = Pitch up (pull back, climb)
+      // C = Pitch down (push forward, dive)
+      // Shift = Afterburner (speed boost)
+
+      const maxSpeed = vehicle.config.maxSpeed;
+      const minFlySpeed = 40; // Stall speed
+      const acceleration = vehicle.config.acceleration * 2;
+      const pitchSpeed = 1.5;
+      const rollSpeed = 2.5;
+      const turnFromRoll = 1.2;
+      const gravity = 15;
+
+      // Throttle
+      let throttleInput = 0;
+      if (input.forward) throttleInput = 1;
+      if (input.backward) throttleInput = -0.5;
+
+      // Pitch (elevator)
+      let pitchInput = 0;
+      if (input.jump) pitchInput = -1;   // Space = pull up (nose up)
+      if (input.crouch) pitchInput = 1;  // C = push down (nose down)
+
+      // Roll (ailerons)
+      let rollInput = 0;
+      if (input.left) rollInput = -1;    // A = roll left (bank left)
+      if (input.right) rollInput = 1;    // D = roll right (bank right)
+
+      // Afterburner
+      const afterburner = input.sprint ? 1.5 : 1.0;
+
+      // Update speed
+      if (throttleInput > 0) {
+        vehicle.currentSpeed += throttleInput * acceleration * afterburner * deltaTime;
+      } else if (throttleInput < 0) {
+        vehicle.currentSpeed += throttleInput * acceleration * 2 * deltaTime; // Brake faster
+      }
+
+      // Speed limits
+      vehicle.currentSpeed = Math.max(0, Math.min(vehicle.currentSpeed, maxSpeed * afterburner));
+
+      // Drag (air resistance)
+      vehicle.currentSpeed *= (1 - 0.02 * deltaTime);
+
+      // Control effectiveness based on speed
+      const speedRatio = Math.min(vehicle.currentSpeed / minFlySpeed, 1);
+      const controlEffectiveness = speedRatio * speedRatio; // Quadratic for realism
+
+      // Apply pitch
+      if (controlEffectiveness > 0.1) {
+        rot.x += pitchInput * pitchSpeed * controlEffectiveness * deltaTime;
+        rot.x = THREE.MathUtils.clamp(rot.x, -Math.PI / 3, Math.PI / 3); // ±60 degrees
+      }
+
+      // Apply roll
+      rot.z += rollInput * rollSpeed * controlEffectiveness * deltaTime;
+      rot.z = THREE.MathUtils.clamp(rot.z, -Math.PI / 2, Math.PI / 2); // ±90 degrees
+
+      // Turn from roll (banking turns)
+      if (Math.abs(rot.z) > 0.1 && controlEffectiveness > 0.3) {
+        rot.y -= Math.sin(rot.z) * turnFromRoll * controlEffectiveness * deltaTime;
+      }
+
+      // Auto-level roll when no input
+      if (rollInput === 0 && pos.y > 5) {
+        rot.z = THREE.MathUtils.lerp(rot.z, 0, deltaTime * 0.5);
+      }
+
+      // Forward movement based on speed
+      const moveSpeed = vehicle.currentSpeed * deltaTime * 0.15;
+      pos.add(forward.clone().normalize().multiplyScalar(moveSpeed));
+
+      // Lift based on speed and pitch
+      let lift = 0;
+      if (vehicle.currentSpeed > minFlySpeed * 0.5) {
+        // Generate lift proportional to speed squared (realistic)
+        const liftCoeff = (vehicle.currentSpeed / maxSpeed);
+        lift = liftCoeff * 20 * Math.cos(rot.x) * deltaTime;
+
+        // Pitch affects climb/dive
+        lift -= Math.sin(rot.x) * vehicle.currentSpeed * 0.1 * deltaTime;
+      }
+
+      // Gravity
+      lift -= gravity * deltaTime;
+
+      // Stall behavior
+      if (vehicle.currentSpeed < minFlySpeed && pos.y > 5) {
+        // Nose drops in stall
+        rot.x = THREE.MathUtils.lerp(rot.x, 0.3, deltaTime * 0.5);
+        lift -= gravity * 0.5 * deltaTime; // Extra gravity in stall
+      }
+
+      pos.y += lift;
+
+      // Ground handling
+      if (pos.y < 1.5) {
+        pos.y = 1.5;
+        // On ground: direct steering with A/D
+        if (vehicle.currentSpeed > 5) {
+          rot.y -= rollInput * 1.0 * deltaTime; // Rudder steering on ground
+        }
+        // Level out
+        rot.x = THREE.MathUtils.lerp(rot.x, 0, deltaTime * 2);
+        rot.z = THREE.MathUtils.lerp(rot.z, 0, deltaTime * 3);
+      }
+
+      // Max altitude
+      if (pos.y > 300) pos.y = 300;
     }
   }
 
@@ -1347,19 +2177,22 @@ export class VehicleManager {
     }
 
     // Headlights toggle (only on keydown, not hold)
-    if (input.headlights) {
+    if (input.headlights && !this.lastHeadlightState) {
       this.toggleHeadlights(vehicle);
     }
+    this.lastHeadlightState = input.headlights;
 
-    // Horn
-    if (input.horn) {
+    // Horn (only play once on keydown, not every frame)
+    if (input.horn && !this.lastHornState) {
       this.game.audio.playSound('horn');
     }
+    this.lastHornState = input.horn;
 
-    // Radio controls
-    if (input.nextRadio) {
+    // Radio controls (only on keydown, not every frame)
+    if (input.nextRadio && !this.lastRadioState) {
       this.game.audio.nextStation();
     }
+    this.lastRadioState = input.nextRadio;
   }
 
   toggleHeadlights(vehicle: Vehicle): void {

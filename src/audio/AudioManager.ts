@@ -195,6 +195,18 @@ export class AudioManager {
   private isAmbientMusicPlaying: boolean = false;
   private currentAmbientIndex: number = 0;
 
+  // Helicopter sound system
+  private helicopterSoundActive: boolean = false;
+  private helicopterRotorOsc: OscillatorNode | null = null;
+  private helicopterRotorGain: GainNode | null = null;
+  private helicopterTurbineOsc: OscillatorNode | null = null;
+  private helicopterTurbineGain: GainNode | null = null;
+  private helicopterWindNoise: AudioBufferSourceNode | null = null;
+  private helicopterWindGain: GainNode | null = null;
+  private helicopterTailRotorOsc: OscillatorNode | null = null;
+  private helicopterTailRotorGain: GainNode | null = null;
+  private helicopterNoiseBuffer: AudioBuffer | null = null;
+
   constructor(config: AudioConfig) {
     this.config = config;
     Howler.volume(config.masterVolume);
@@ -219,6 +231,7 @@ export class AudioManager {
     globalEvents.on('vehicle_exit', () => {
       // Stop radio, start ambient music
       this.stopRadio();
+      this.stopHelicopterSound(); // Stop helicopter sound if active
       this.startAmbientMusic();
     });
   }
@@ -1012,6 +1025,221 @@ export class AudioManager {
     }
   }
 
+  // ==================== HELICOPTER SOUND SYSTEM ====================
+
+  private createNoiseBuffer(): AudioBuffer {
+    if (this.helicopterNoiseBuffer) return this.helicopterNoiseBuffer;
+    if (!this.audioContext) throw new Error('No audio context');
+
+    // Create white noise buffer for wind sound
+    const bufferSize = this.audioContext.sampleRate * 2; // 2 seconds of noise
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const output = buffer.getChannelData(0);
+
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+
+    this.helicopterNoiseBuffer = buffer;
+    return buffer;
+  }
+
+  startHelicopterSound(): void {
+    if (!this.audioContext || this.helicopterSoundActive) return;
+
+    const ctx = this.audioContext;
+    const masterVolume = this.config.sfxVolume * this.config.masterVolume * 0.4;
+
+    // === MAIN ROTOR SOUND (low frequency thump) ===
+    // Using multiple oscillators for richer sound
+    this.helicopterRotorOsc = ctx.createOscillator();
+    this.helicopterRotorGain = ctx.createGain();
+
+    // Create a low-frequency modulator for the "blade pass" effect
+    const rotorLFO = ctx.createOscillator();
+    const rotorLFOGain = ctx.createGain();
+    rotorLFO.frequency.value = 8; // ~8 Hz blade pass frequency (4 blades at 120 RPM)
+    rotorLFOGain.gain.value = 30;
+    rotorLFO.connect(rotorLFOGain);
+    rotorLFOGain.connect(this.helicopterRotorOsc.frequency);
+
+    this.helicopterRotorOsc.type = 'sawtooth';
+    this.helicopterRotorOsc.frequency.value = 45; // Low bass rotor thump
+    this.helicopterRotorGain.gain.value = masterVolume * 0.6;
+
+    this.helicopterRotorOsc.connect(this.helicopterRotorGain);
+    this.helicopterRotorGain.connect(ctx.destination);
+
+    this.helicopterRotorOsc.start();
+    rotorLFO.start();
+
+    // === TAIL ROTOR SOUND (higher frequency whine) ===
+    this.helicopterTailRotorOsc = ctx.createOscillator();
+    this.helicopterTailRotorGain = ctx.createGain();
+
+    this.helicopterTailRotorOsc.type = 'triangle';
+    this.helicopterTailRotorOsc.frequency.value = 180; // Higher pitch tail rotor
+    this.helicopterTailRotorGain.gain.value = masterVolume * 0.15;
+
+    this.helicopterTailRotorOsc.connect(this.helicopterTailRotorGain);
+    this.helicopterTailRotorGain.connect(ctx.destination);
+
+    this.helicopterTailRotorOsc.start();
+
+    // === TURBINE ENGINE WHINE ===
+    this.helicopterTurbineOsc = ctx.createOscillator();
+    this.helicopterTurbineGain = ctx.createGain();
+
+    // High frequency turbine whine with slight warble
+    const turbineLFO = ctx.createOscillator();
+    const turbineLFOGain = ctx.createGain();
+    turbineLFO.frequency.value = 3; // Slight warble
+    turbineLFOGain.gain.value = 50;
+    turbineLFO.connect(turbineLFOGain);
+    turbineLFOGain.connect(this.helicopterTurbineOsc.frequency);
+
+    this.helicopterTurbineOsc.type = 'sine';
+    this.helicopterTurbineOsc.frequency.value = 800; // High turbine whine
+    this.helicopterTurbineGain.gain.value = masterVolume * 0.08;
+
+    // Add a filter to make it more realistic
+    const turbineFilter = ctx.createBiquadFilter();
+    turbineFilter.type = 'bandpass';
+    turbineFilter.frequency.value = 1200;
+    turbineFilter.Q.value = 2;
+
+    this.helicopterTurbineOsc.connect(turbineFilter);
+    turbineFilter.connect(this.helicopterTurbineGain);
+    this.helicopterTurbineGain.connect(ctx.destination);
+
+    this.helicopterTurbineOsc.start();
+    turbineLFO.start();
+
+    // === WIND NOISE (filtered noise) ===
+    const noiseBuffer = this.createNoiseBuffer();
+    this.helicopterWindNoise = ctx.createBufferSource();
+    this.helicopterWindGain = ctx.createGain();
+
+    this.helicopterWindNoise.buffer = noiseBuffer;
+    this.helicopterWindNoise.loop = true;
+    this.helicopterWindGain.gain.value = 0; // Start at 0, increases with speed
+
+    // Filter the noise for wind-like sound
+    const windFilter = ctx.createBiquadFilter();
+    windFilter.type = 'lowpass';
+    windFilter.frequency.value = 400;
+    windFilter.Q.value = 1;
+
+    this.helicopterWindNoise.connect(windFilter);
+    windFilter.connect(this.helicopterWindGain);
+    this.helicopterWindGain.connect(ctx.destination);
+
+    this.helicopterWindNoise.start();
+
+    this.helicopterSoundActive = true;
+    console.log('Helicopter sound started');
+  }
+
+  stopHelicopterSound(): void {
+    if (!this.helicopterSoundActive) return;
+
+    // Stop all oscillators and nodes
+    try {
+      if (this.helicopterRotorOsc) {
+        this.helicopterRotorOsc.stop();
+        this.helicopterRotorOsc.disconnect();
+        this.helicopterRotorOsc = null;
+      }
+      if (this.helicopterRotorGain) {
+        this.helicopterRotorGain.disconnect();
+        this.helicopterRotorGain = null;
+      }
+      if (this.helicopterTailRotorOsc) {
+        this.helicopterTailRotorOsc.stop();
+        this.helicopterTailRotorOsc.disconnect();
+        this.helicopterTailRotorOsc = null;
+      }
+      if (this.helicopterTailRotorGain) {
+        this.helicopterTailRotorGain.disconnect();
+        this.helicopterTailRotorGain = null;
+      }
+      if (this.helicopterTurbineOsc) {
+        this.helicopterTurbineOsc.stop();
+        this.helicopterTurbineOsc.disconnect();
+        this.helicopterTurbineOsc = null;
+      }
+      if (this.helicopterTurbineGain) {
+        this.helicopterTurbineGain.disconnect();
+        this.helicopterTurbineGain = null;
+      }
+      if (this.helicopterWindNoise) {
+        this.helicopterWindNoise.stop();
+        this.helicopterWindNoise.disconnect();
+        this.helicopterWindNoise = null;
+      }
+      if (this.helicopterWindGain) {
+        this.helicopterWindGain.disconnect();
+        this.helicopterWindGain = null;
+      }
+    } catch (e) {
+      // Ignore errors during cleanup
+    }
+
+    this.helicopterSoundActive = false;
+    console.log('Helicopter sound stopped');
+  }
+
+  updateHelicopterSound(collective: number, speed: number, altitude: number): void {
+    if (!this.helicopterSoundActive || !this.audioContext) return;
+
+    const masterVolume = this.config.sfxVolume * this.config.masterVolume * 0.4;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Rotor pitch changes with collective (power)
+    // Higher collective = higher rotor load = lower pitch (lag), then higher as RPM recovers
+    const rotorPitchMod = 1 + (collective * 0.15) - (speed * 0.002);
+    const rotorFreq = 45 * Math.max(0.8, Math.min(1.3, rotorPitchMod));
+
+    if (this.helicopterRotorOsc) {
+      this.helicopterRotorOsc.frequency.setTargetAtTime(rotorFreq, now, 0.1);
+    }
+
+    // Rotor volume increases with collective input
+    const rotorVolume = masterVolume * (0.5 + Math.abs(collective) * 0.3);
+    if (this.helicopterRotorGain) {
+      this.helicopterRotorGain.gain.setTargetAtTime(rotorVolume, now, 0.1);
+    }
+
+    // Tail rotor pitch varies slightly with collective (anti-torque)
+    const tailPitch = 180 + collective * 40;
+    if (this.helicopterTailRotorOsc) {
+      this.helicopterTailRotorOsc.frequency.setTargetAtTime(tailPitch, now, 0.05);
+    }
+
+    // Turbine pitch increases with load
+    const turbinePitch = 800 + Math.abs(collective) * 200 + speed * 5;
+    if (this.helicopterTurbineOsc) {
+      this.helicopterTurbineOsc.frequency.setTargetAtTime(turbinePitch, now, 0.2);
+    }
+
+    // Turbine volume increases with power demand
+    const turbineVolume = masterVolume * (0.06 + Math.abs(collective) * 0.06);
+    if (this.helicopterTurbineGain) {
+      this.helicopterTurbineGain.gain.setTargetAtTime(turbineVolume, now, 0.1);
+    }
+
+    // Wind noise increases with speed
+    const windVolume = masterVolume * Math.min(0.4, speed * 0.015);
+    if (this.helicopterWindGain) {
+      this.helicopterWindGain.gain.setTargetAtTime(windVolume, now, 0.2);
+    }
+  }
+
+  isHelicopterSoundActive(): boolean {
+    return this.helicopterSoundActive;
+  }
+
   pauseAll(): void {
     this.isPaused = true;
     if (this.currentRadioHowl) {
@@ -1048,6 +1276,7 @@ export class AudioManager {
 
   dispose(): void {
     this.stopAmbientMusic();
+    this.stopHelicopterSound();
     if (this.currentRadioHowl) {
       this.currentRadioHowl.unload();
     }

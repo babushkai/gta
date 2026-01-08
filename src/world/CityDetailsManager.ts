@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Game } from '@/core/Game';
+import { BuildingMetadata } from './World';
 
 interface NeonSign {
   mesh: THREE.Group;
@@ -47,6 +48,7 @@ interface StreetVendor {
 
 export class CityDetailsManager {
   private game: Game;
+  private detailsGroup: THREE.Group;
   private streetFurniture: THREE.Group[] = [];
   private neonSigns: NeonSign[] = [];
   private billboards: Billboard[] = [];
@@ -63,10 +65,20 @@ export class CityDetailsManager {
   private isRaining: boolean = false;
   private isMobile: boolean;
 
+  // Performance: throttle updates
+  private updateAccumulator: number = 0;
+  private updateInterval: number = 0.1; // Update every 100ms instead of every frame
+
   constructor(game: Game) {
     this.game = game;
+    this.detailsGroup = new THREE.Group();
+    this.detailsGroup.name = 'detailsGroup';
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
       ('ontouchstart' in window) || window.innerWidth < 768;
+  }
+
+  getDetailsGroup(): THREE.Group {
+    return this.detailsGroup;
   }
 
   async initialize(): Promise<void> {
@@ -80,6 +92,14 @@ export class CityDetailsManager {
     this.createCentralParkArea();
     this.createStorefronts();
     this.createStreetVendors();
+
+    // Enhanced NYC atmosphere
+    this.createNYCLandmarks();
+    this.createDistrictAtmosphere();
+    this.createStreetAtmosphere();
+
+    // Add detailsGroup to scene
+    this.game.scene.add(this.detailsGroup);
   }
 
   // ==================== STREET FURNITURE ====================
@@ -96,7 +116,7 @@ export class CityDetailsManager {
         if (Math.random() > 0.7) {
           const hydrant = this.createFireHydrant();
           hydrant.position.set(baseX + 8, 0, baseZ + 8);
-          this.game.scene.add(hydrant);
+          this.detailsGroup.add(hydrant);
           this.streetFurniture.push(hydrant);
         }
 
@@ -104,7 +124,7 @@ export class CityDetailsManager {
         if (Math.random() > 0.5) {
           const trash = this.createTrashCan();
           trash.position.set(baseX + 6 + Math.random() * 4, 0, baseZ + 7);
-          this.game.scene.add(trash);
+          this.detailsGroup.add(trash);
           this.streetFurniture.push(trash);
         }
 
@@ -112,7 +132,7 @@ export class CityDetailsManager {
         if (Math.random() > 0.8) {
           const mailbox = this.createMailbox();
           mailbox.position.set(baseX + 9, 0, baseZ - 5 + Math.random() * 10);
-          this.game.scene.add(mailbox);
+          this.detailsGroup.add(mailbox);
           this.streetFurniture.push(mailbox);
         }
 
@@ -121,7 +141,7 @@ export class CityDetailsManager {
           const bench = this.createBench();
           bench.position.set(baseX + 7, 0, baseZ + Math.random() * 20 - 10);
           bench.rotation.y = Math.PI / 2;
-          this.game.scene.add(bench);
+          this.detailsGroup.add(bench);
           this.streetFurniture.push(bench);
         }
 
@@ -129,7 +149,7 @@ export class CityDetailsManager {
         if (Math.random() > 0.92) {
           const booth = this.createPhoneBooth();
           booth.position.set(baseX + 9, 0, baseZ + 12);
-          this.game.scene.add(booth);
+          this.detailsGroup.add(booth);
           this.streetFurniture.push(booth);
         }
 
@@ -138,7 +158,7 @@ export class CityDetailsManager {
           for (let i = 0; i < 3; i++) {
             const meter = this.createParkingMeter();
             meter.position.set(baseX + 5, 0, baseZ + i * 3 - 3);
-            this.game.scene.add(meter);
+            this.detailsGroup.add(meter);
             this.streetFurniture.push(meter);
           }
         }
@@ -147,7 +167,7 @@ export class CityDetailsManager {
         if (Math.random() > 0.85) {
           const newsbox = this.createNewspaperBox();
           newsbox.position.set(baseX + 8.5, 0, baseZ + 15);
-          this.game.scene.add(newsbox);
+          this.detailsGroup.add(newsbox);
           this.streetFurniture.push(newsbox);
         }
       }
@@ -543,7 +563,7 @@ export class CityDetailsManager {
         sign.mesh.position.set(baseX, height, baseZ);
         sign.mesh.rotation.y = Math.random() * Math.PI * 2;
 
-        this.game.scene.add(sign.mesh);
+        this.detailsGroup.add(sign.mesh);
         this.neonSigns.push(sign);
       }
     }
@@ -604,7 +624,7 @@ export class CityDetailsManager {
       const billboard = this.createBillboard(i);
       billboard.mesh.position.set(pos.x, 15, pos.z);
       billboard.mesh.rotation.y = Math.atan2(pos.x, pos.z) + Math.PI;
-      this.game.scene.add(billboard.mesh);
+      this.detailsGroup.add(billboard.mesh);
       this.billboards.push(billboard);
     });
   }
@@ -686,7 +706,7 @@ export class CityDetailsManager {
       const entrance = this.createSubwayEntrance();
       entrance.mesh.position.set(pos.x, 0, pos.z);
       entrance.mesh.rotation.y = Math.random() * Math.PI * 2;
-      this.game.scene.add(entrance.mesh);
+      this.detailsGroup.add(entrance.mesh);
       this.subwayEntrances.push(entrance);
     });
   }
@@ -824,7 +844,7 @@ export class CityDetailsManager {
           const hasLight = lampCount < maxLampsWithLights && Math.abs(x) <= 1 && Math.abs(z) <= 1;
           const lamp = this.createStreetLamp(metalMaterial, hasLight);
           lamp.mesh.position.set(baseX + offset.dx, 0, baseZ + offset.dz);
-          this.game.scene.add(lamp.mesh);
+          this.detailsGroup.add(lamp.mesh);
 
           if (hasLight) {
             this.streetLamps.push(lamp);
@@ -896,97 +916,103 @@ export class CityDetailsManager {
   private createBuildingDetails(): void {
     if (this.isMobile) return; // Skip on mobile for performance
 
-    const gridSize = 50;
-    const range = 4;
+    // Use building registry to attach details to actual buildings
+    const buildingRegistry = this.game.world.getBuildingRegistry();
 
-    for (let x = -range; x <= range; x++) {
-      for (let z = -range; z <= range; z++) {
-        const baseX = x * gridSize;
-        const baseZ = z * gridSize;
+    buildingRegistry.forEach((building: BuildingMetadata) => {
+      const { position, height, width, depth, style, district } = building;
 
-        // Fire escapes on building sides
-        if (Math.random() > 0.5) {
-          const fireEscape = this.createFireEscape();
-          const side = Math.random() > 0.5 ? 1 : -1;
-          fireEscape.position.set(
-            baseX + side * 12,
-            0,
-            baseZ + (Math.random() - 0.5) * 20
+      // Fire escapes - only on brownstone, prewar, and warehouse buildings
+      if ((style === 'brownstone' || style === 'prewar' || style === 'warehouse') && Math.random() > 0.4) {
+        const fireEscape = this.createFireEscape();
+        const side = Math.random() > 0.5 ? 1 : -1;
+        // Position on actual building facade
+        fireEscape.position.set(
+          position.x + side * (width / 2 + 0.5),
+          0,  // Fire escapes start from ground
+          position.z + (Math.random() - 0.5) * depth * 0.6
+        );
+        fireEscape.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+        // Scale fire escape to building height
+        const floors = Math.min(Math.floor(height / 3.5), 8);
+        fireEscape.scale.y = floors / 6; // Adjust to building
+        this.detailsGroup.add(fireEscape);
+        this.buildingDetails.push({ mesh: fireEscape, type: 'fire_escape' });
+
+        // Register ladders as climbable objects
+        this.registerFireEscapeLadders(fireEscape);
+      }
+
+      // AC units - not on glass towers or warehouses
+      if (style !== 'glass_tower' && style !== 'warehouse' && Math.random() > 0.5) {
+        const acCount = Math.floor(Math.random() * 3) + 1;
+        for (let i = 0; i < acCount; i++) {
+          const acUnit = this.createWindowACUnit();
+          const floorHeight = 3 + Math.random() * (height * 0.7);
+          // Position on actual building facade
+          acUnit.position.set(
+            position.x + (width / 2 + 0.3),
+            floorHeight,
+            position.z + (Math.random() - 0.5) * depth * 0.8
           );
-          fireEscape.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
-          this.game.scene.add(fireEscape);
-          this.buildingDetails.push({ mesh: fireEscape, type: 'fire_escape' });
-        }
-
-        // AC units on building walls
-        for (let i = 0; i < 3; i++) {
-          if (Math.random() > 0.6) {
-            const acUnit = this.createWindowACUnit();
-            const height = 3 + Math.random() * 12;
-            acUnit.position.set(
-              baseX + 11 + Math.random() * 2,
-              height,
-              baseZ + (Math.random() - 0.5) * 30
-            );
-            this.game.scene.add(acUnit);
-            this.buildingDetails.push({ mesh: acUnit, type: 'ac_unit' });
-          }
-        }
-
-        // Water towers on rooftops
-        if (Math.random() > 0.7) {
-          const waterTower = this.createWaterTower();
-          const buildingHeight = 15 + Math.random() * 25;
-          waterTower.position.set(
-            baseX + (Math.random() - 0.5) * 15,
-            buildingHeight,
-            baseZ + (Math.random() - 0.5) * 15
-          );
-          this.game.scene.add(waterTower);
-          this.buildingDetails.push({ mesh: waterTower, type: 'water_tower' });
-        }
-
-        // Rooftop antennas
-        if (Math.random() > 0.6) {
-          const antenna = this.createRooftopAntenna();
-          const buildingHeight = 18 + Math.random() * 20;
-          antenna.position.set(
-            baseX + (Math.random() - 0.5) * 10,
-            buildingHeight,
-            baseZ + (Math.random() - 0.5) * 10
-          );
-          this.game.scene.add(antenna);
-          this.buildingDetails.push({ mesh: antenna, type: 'antenna' });
-        }
-
-        // Satellite dishes
-        if (Math.random() > 0.8) {
-          const satellite = this.createSatelliteDish();
-          const buildingHeight = 12 + Math.random() * 15;
-          satellite.position.set(
-            baseX + (Math.random() - 0.5) * 12,
-            buildingHeight,
-            baseZ + (Math.random() - 0.5) * 12
-          );
-          satellite.rotation.y = Math.random() * Math.PI * 2;
-          this.game.scene.add(satellite);
-          this.buildingDetails.push({ mesh: satellite, type: 'satellite' });
-        }
-
-        // Rooftop HVAC units
-        if (Math.random() > 0.65) {
-          const hvac = this.createRooftopHVAC();
-          const buildingHeight = 14 + Math.random() * 18;
-          hvac.position.set(
-            baseX + (Math.random() - 0.5) * 14,
-            buildingHeight,
-            baseZ + (Math.random() - 0.5) * 14
-          );
-          this.game.scene.add(hvac);
-          this.buildingDetails.push({ mesh: hvac, type: 'ac_unit' });
+          this.detailsGroup.add(acUnit);
+          this.buildingDetails.push({ mesh: acUnit, type: 'ac_unit' });
         }
       }
-    }
+
+      // Water towers - only on taller buildings (>20 units) in residential/prewar style
+      if (height > 20 && (style === 'prewar' || style === 'brownstone') && Math.random() > 0.6) {
+        const waterTower = this.createWaterTower();
+        // Position on actual rooftop
+        waterTower.position.set(
+          position.x + (Math.random() - 0.5) * width * 0.5,
+          height,  // Actual building height (rooftop)
+          position.z + (Math.random() - 0.5) * depth * 0.5
+        );
+        this.detailsGroup.add(waterTower);
+        this.buildingDetails.push({ mesh: waterTower, type: 'water_tower' });
+      }
+
+      // Rooftop antennas - on modern and glass tower buildings
+      if ((style === 'modern' || style === 'glass_tower') && height > 25 && Math.random() > 0.5) {
+        const antenna = this.createRooftopAntenna();
+        // Position on actual rooftop
+        antenna.position.set(
+          position.x + (Math.random() - 0.5) * width * 0.3,
+          height,  // Actual building height (rooftop)
+          position.z + (Math.random() - 0.5) * depth * 0.3
+        );
+        this.detailsGroup.add(antenna);
+        this.buildingDetails.push({ mesh: antenna, type: 'antenna' });
+      }
+
+      // Satellite dishes - on residential and prewar buildings
+      if ((style === 'brownstone' || style === 'prewar') && Math.random() > 0.7) {
+        const satellite = this.createSatelliteDish();
+        // Position on actual rooftop
+        satellite.position.set(
+          position.x + (Math.random() - 0.5) * width * 0.6,
+          height,  // Actual building height (rooftop)
+          position.z + (Math.random() - 0.5) * depth * 0.6
+        );
+        satellite.rotation.y = Math.random() * Math.PI * 2;
+        this.detailsGroup.add(satellite);
+        this.buildingDetails.push({ mesh: satellite, type: 'satellite' });
+      }
+
+      // Rooftop HVAC units - on commercial and modern buildings
+      if ((style === 'modern' || style === 'glass_tower' || style === 'artdeco') && height > 15 && Math.random() > 0.5) {
+        const hvac = this.createRooftopHVAC();
+        // Position on actual rooftop
+        hvac.position.set(
+          position.x + (Math.random() - 0.5) * width * 0.5,
+          height,  // Actual building height (rooftop)
+          position.z + (Math.random() - 0.5) * depth * 0.5
+        );
+        this.detailsGroup.add(hvac);
+        this.buildingDetails.push({ mesh: hvac, type: 'ac_unit' });
+      }
+    });
   }
 
   private createFireEscape(): THREE.Group {
@@ -1099,7 +1125,49 @@ export class CityDetailsManager {
       group.add(rung);
     }
 
+    // Tag as climbable for the climbing system
+    group.userData.climbable = true;
+    group.userData.climbType = 'ladder';
+    group.userData.climbHeight = height;
+
     return group;
+  }
+
+  /**
+   * Register all ladders in a fire escape with the InteriorManager for climbing
+   */
+  private registerFireEscapeLadders(fireEscape: THREE.Group): void {
+    let ladderIndex = 0;
+
+    fireEscape.traverse((child) => {
+      if (child.userData.climbable && child.userData.climbType === 'ladder') {
+        // Get world position of the ladder
+        const worldPos = new THREE.Vector3();
+        child.getWorldPosition(worldPos);
+
+        // Get the ladder height (accounting for scale)
+        const ladderHeight = (child.userData.climbHeight || 3) * fireEscape.scale.y;
+
+        // Calculate facing direction (normal) based on fire escape rotation
+        const normal = new THREE.Vector3(0, 0, 1);
+        normal.applyQuaternion(fireEscape.quaternion);
+
+        // Create climbable object registration
+        const climbableId = `ladder_${fireEscape.uuid}_${ladderIndex++}`;
+        child.userData.climbableId = climbableId;
+
+        this.game.interiors.registerClimbable({
+          id: climbableId,
+          type: 'ladder',
+          position: worldPos.clone(),
+          topPosition: worldPos.clone().add(new THREE.Vector3(0, ladderHeight / 2, 0)),
+          bottomPosition: worldPos.clone().add(new THREE.Vector3(0, -ladderHeight / 2, 0)),
+          normal: normal,
+          width: 0.3,
+          mesh: child
+        });
+      }
+    });
   }
 
   private createWindowACUnit(): THREE.Group {
@@ -1482,13 +1550,13 @@ export class CityDetailsManager {
       const screen = this.createGiantScreen();
       screen.position.set(x, 10, z);
       screen.rotation.y = -angle + Math.PI;
-      this.game.scene.add(screen);
+      this.detailsGroup.add(screen);
     }
 
     // Scrolling news ticker
     const ticker = this.createNewsTicker();
     ticker.position.set(centerX, 6, centerZ - 40);
-    this.game.scene.add(ticker);
+    this.detailsGroup.add(ticker);
   }
 
   private createGiantScreen(): THREE.Group {
@@ -1561,7 +1629,7 @@ export class CityDetailsManager {
     grass.position.copy(parkCenter);
     grass.position.y = 0.01;
     grass.receiveShadow = true;
-    this.game.scene.add(grass);
+    this.detailsGroup.add(grass);
 
     // Trees
     for (let i = 0; i < 20; i++) {
@@ -1571,7 +1639,7 @@ export class CityDetailsManager {
         0,
         parkCenter.z + (Math.random() - 0.5) * parkSize * 0.8
       );
-      this.game.scene.add(tree);
+      this.detailsGroup.add(tree);
     }
 
     // Benches around the park
@@ -1584,7 +1652,7 @@ export class CityDetailsManager {
         parkCenter.z + Math.sin(angle) * (parkSize * 0.35)
       );
       bench.rotation.y = angle + Math.PI / 2;
-      this.game.scene.add(bench);
+      this.detailsGroup.add(bench);
     }
 
     // Lamp posts along path (decorative only, no PointLights for performance)
@@ -1601,14 +1669,14 @@ export class CityDetailsManager {
         0,
         parkCenter.z + Math.sin(angle) * (parkSize * 0.4)
       );
-      this.game.scene.add(lamp.mesh);
+      this.detailsGroup.add(lamp.mesh);
       // Don't add to streetLamps array since they have no lights
     }
 
     // Fountain in center
     const fountain = this.createFountain();
     fountain.position.copy(parkCenter);
-    this.game.scene.add(fountain);
+    this.detailsGroup.add(fountain);
   }
 
   private createTree(): THREE.Group {
@@ -1760,7 +1828,7 @@ export class CityDetailsManager {
         storefront.mesh.position.set(pos.x + 12, 0, pos.z);
         storefront.mesh.rotation.y = pos.rotation;
         storefront.position.set(pos.x + 12, 0, pos.z);
-        this.game.scene.add(storefront.mesh);
+        this.detailsGroup.add(storefront.mesh);
         this.storefronts.push(storefront);
       });
     });
@@ -2109,7 +2177,7 @@ export class CityDetailsManager {
       const vendor = this.createStreetVendor(type);
       vendor.mesh.position.set(pos.x, 0, pos.z);
       vendor.mesh.rotation.y = Math.random() * Math.PI * 2;
-      this.game.scene.add(vendor.mesh);
+      this.detailsGroup.add(vendor.mesh);
       this.streetVendors.push(vendor);
     });
   }
@@ -2467,6 +2535,14 @@ export class CityDetailsManager {
 
   // ==================== UPDATE ====================
   update(deltaTime: number): void {
+    // Throttle updates for performance - only update every 100ms
+    this.updateAccumulator += deltaTime;
+    if (this.updateAccumulator < this.updateInterval) {
+      return;
+    }
+    const throttledDelta = this.updateAccumulator;
+    this.updateAccumulator = 0;
+
     const timeOfDay = this.game.weather.getTimeOfDay();
     const isNight = timeOfDay < 6 || timeOfDay > 20;
     const weatherType = this.game.weather.getCurrentWeather();
@@ -2484,16 +2560,37 @@ export class CityDetailsManager {
       this.updatePuddles(isRaining);
     }
 
-    // Update neon signs
-    this.updateNeonSigns(deltaTime);
+    // Update neon signs (throttled)
+    this.updateNeonSigns(throttledDelta);
 
-    // Update billboards
-    this.updateBillboards(deltaTime);
+    // Update billboards (throttled)
+    this.updateBillboards(throttledDelta);
 
-    // Update subway steam
-    this.updateSubwayEntrances(deltaTime);
+    // Update subway steam (throttled)
+    this.updateSubwayEntrances(throttledDelta);
+
+    // Update building detail visibility based on distance (performance optimization)
+    this.updateDetailVisibility();
 
     this.lastTimeOfDay = timeOfDay;
+  }
+
+  private updateDetailVisibility(): void {
+    const playerPos = this.game.player.position;
+    const detailVisibilityDistance = 150;  // Hide details beyond this distance
+    const furnitureVisibilityDistance = 200;  // Hide street furniture beyond this
+
+    // Cull distant building details
+    this.buildingDetails.forEach(detail => {
+      const distance = detail.mesh.position.distanceTo(playerPos);
+      detail.mesh.visible = distance < detailVisibilityDistance;
+    });
+
+    // Cull distant street furniture (but not street lamps for lighting)
+    this.streetFurniture.forEach(item => {
+      const distance = item.position.distanceTo(playerPos);
+      item.visible = distance < furnitureVisibilityDistance;
+    });
   }
 
   private updateLighting(isNight: boolean): void {
@@ -2595,7 +2692,7 @@ export class CityDetailsManager {
           0.02,
           (Math.random() - 0.5) * 200
         );
-        this.game.scene.add(puddle);
+        this.detailsGroup.add(puddle);
         this.puddles.push(puddle);
       }
     } else if (!isRaining && this.puddles.length > 0) {
@@ -2605,6 +2702,500 @@ export class CityDetailsManager {
       });
       this.puddles = [];
     }
+  }
+
+  // ==================== NYC LANDMARKS ====================
+  private createNYCLandmarks(): void {
+    if (this.isMobile) return;
+
+    // Subway kiosks at key intersections
+    this.createSubwayKiosks();
+
+    // Broadway-style vertical neon signs
+    this.createBroadwaySigns();
+
+    // Taxi stands
+    this.createTaxiStands();
+  }
+
+  private createSubwayKiosks(): void {
+    const kioskPositions = [
+      { x: 30, z: 30 },
+      { x: -60, z: 45 },
+      { x: 90, z: -30 },
+      { x: -100, z: -80 },
+      { x: 150, z: 60 },
+    ];
+
+    kioskPositions.forEach(pos => {
+      const kiosk = this.createSubwayKiosk();
+      kiosk.position.set(pos.x, 0, pos.z);
+      this.detailsGroup.add(kiosk);
+      this.streetFurniture.push(kiosk);
+    });
+  }
+
+  private createSubwayKiosk(): THREE.Group {
+    const group = new THREE.Group();
+
+    // Green metal structure (classic NYC subway kiosk)
+    const metalMat = new THREE.MeshStandardMaterial({
+      color: 0x228B22,
+      roughness: 0.5,
+      metalness: 0.6
+    });
+
+    // Main booth frame
+    const booth = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 2.5, 1.5),
+      metalMat
+    );
+    booth.position.y = 1.25;
+    booth.castShadow = true;
+    group.add(booth);
+
+    // Glass panels
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0xaaddff,
+      transparent: true,
+      opacity: 0.4,
+      roughness: 0.1
+    });
+    const glassPanel = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 1.8, 0.05),
+      glassMat
+    );
+    glassPanel.position.set(0, 1.4, 0.73);
+    group.add(glassPanel);
+
+    // Map display (illuminated)
+    const mapDisplay = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 1.2, 0.05),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffee,
+        emissive: 0x333322,
+        emissiveIntensity: 0.5
+      })
+    );
+    mapDisplay.position.set(0, 1.5, 0.78);
+    group.add(mapDisplay);
+
+    // "SUBWAY" header sign
+    const header = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 0.4, 0.15),
+      new THREE.MeshStandardMaterial({
+        color: 0x228B22,
+        emissive: 0x114411,
+        emissiveIntensity: 0.4
+      })
+    );
+    header.position.set(0, 2.7, 0);
+    group.add(header);
+
+    // Roof
+    const roof = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 0.15, 1.8),
+      metalMat
+    );
+    roof.position.y = 2.55;
+    group.add(roof);
+
+    return group;
+  }
+
+  private createBroadwaySigns(): void {
+    // Vertical neon signs along main streets (Times Square feel)
+    const signData = [
+      { x: 0, z: -20, text: 'BROADWAY', color: 0xff0066 },
+      { x: 55, z: 0, text: 'TIMES SQ', color: 0x00ffff },
+      { x: -55, z: 45, text: 'THEATER', color: 0xffff00 },
+      { x: 110, z: -55, text: 'HOTEL', color: 0xff6600 },
+      { x: -110, z: 0, text: 'DINER', color: 0x00ff66 },
+    ];
+
+    signData.forEach(data => {
+      const sign = this.createVerticalNeonSign(data.text, data.color);
+      sign.position.set(data.x + 12, 8, data.z);
+      this.detailsGroup.add(sign);
+      this.streetFurniture.push(sign);
+    });
+  }
+
+  private createVerticalNeonSign(text: string, color: number): THREE.Group {
+    const group = new THREE.Group();
+
+    // Backing structure
+    const backing = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, text.length * 1.5 + 1, 0.4),
+      new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 })
+    );
+    backing.castShadow = true;
+    group.add(backing);
+
+    // Border frame
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.5 });
+    const frameTop = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.15, 0.5), frameMat);
+    frameTop.position.y = text.length * 0.75 + 0.6;
+    group.add(frameTop);
+    const frameBottom = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.15, 0.5), frameMat);
+    frameBottom.position.y = -text.length * 0.75 - 0.6;
+    group.add(frameBottom);
+
+    // Vertical neon letters
+    const glowMat = new THREE.MeshStandardMaterial({
+      color: color,
+      emissive: color,
+      emissiveIntensity: 2.5
+    });
+
+    for (let i = 0; i < text.length; i++) {
+      const letter = new THREE.Mesh(
+        new THREE.BoxGeometry(1.8, 1.0, 0.15),
+        glowMat
+      );
+      letter.position.set(0, (text.length / 2 - i - 0.5) * 1.3, 0.25);
+      group.add(letter);
+    }
+
+    return group;
+  }
+
+  private createTaxiStands(): void {
+    const standPositions = [
+      { x: 25, z: 0 },
+      { x: -80, z: 60 },
+      { x: 120, z: -40 },
+    ];
+
+    standPositions.forEach(pos => {
+      const stand = this.createTaxiStand();
+      stand.position.set(pos.x, 0, pos.z);
+      this.detailsGroup.add(stand);
+      this.streetFurniture.push(stand);
+    });
+  }
+
+  private createTaxiStand(): THREE.Group {
+    const group = new THREE.Group();
+
+    // Yellow taxi stand sign pole
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.05, 2.5, 8),
+      new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.6 })
+    );
+    pole.position.y = 1.25;
+    group.add(pole);
+
+    // Yellow "TAXI" sign
+    const sign = new THREE.Mesh(
+      new THREE.BoxGeometry(0.8, 0.4, 0.1),
+      new THREE.MeshStandardMaterial({
+        color: 0xffcc00,
+        emissive: 0x665500,
+        emissiveIntensity: 0.3
+      })
+    );
+    sign.position.y = 2.6;
+    group.add(sign);
+
+    return group;
+  }
+
+  // ==================== DISTRICT ATMOSPHERE ====================
+  private createDistrictAtmosphere(): void {
+    if (this.isMobile) return;
+
+    // Residential area - street trees
+    this.createResidentialTrees();
+
+    // Industrial area - extra grit
+    this.createIndustrialGrit();
+  }
+
+  private createResidentialTrees(): void {
+    // Street trees in residential area (west side)
+    for (let x = -5; x <= -3; x++) {
+      for (let z = -6; z <= 6; z++) {
+        if (Math.random() > 0.4) continue;
+
+        const baseX = x * 45;
+        const baseZ = z * 45;
+
+        const tree = this.createStreetTree();
+        tree.position.set(baseX + 8, 0, baseZ + (Math.random() - 0.5) * 30);
+        this.detailsGroup.add(tree);
+        this.streetFurniture.push(tree);
+      }
+    }
+  }
+
+  private createStreetTree(): THREE.Group {
+    const group = new THREE.Group();
+
+    // Tree grate (metal)
+    const grate = new THREE.Mesh(
+      new THREE.RingGeometry(0.4, 0.9, 4),
+      new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.5, roughness: 0.7 })
+    );
+    grate.rotation.x = -Math.PI / 2;
+    grate.rotation.z = Math.PI / 4;
+    grate.position.y = 0.02;
+    group.add(grate);
+
+    // Tree trunk
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.15, 3, 8),
+      new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 })
+    );
+    trunk.position.y = 1.5;
+    trunk.castShadow = true;
+    group.add(trunk);
+
+    // Canopy (multiple layers for fullness)
+    const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.8 });
+
+    const mainCanopy = new THREE.Mesh(
+      new THREE.SphereGeometry(1.5, 8, 8),
+      canopyMat
+    );
+    mainCanopy.position.y = 4;
+    mainCanopy.scale.y = 0.7;
+    mainCanopy.castShadow = true;
+    group.add(mainCanopy);
+
+    // Secondary canopy for fullness
+    const secondCanopy = new THREE.Mesh(
+      new THREE.SphereGeometry(1.2, 6, 6),
+      canopyMat
+    );
+    secondCanopy.position.set(0.5, 3.5, 0.3);
+    secondCanopy.scale.y = 0.6;
+    group.add(secondCanopy);
+
+    return group;
+  }
+
+  private createIndustrialGrit(): void {
+    // Industrial area (east side) - dumpsters and chain link fences
+    for (let x = 4; x <= 7; x++) {
+      for (let z = -6; z <= 6; z++) {
+        const baseX = x * 50;
+        const baseZ = z * 50;
+
+        // Dumpsters
+        if (Math.random() > 0.5) {
+          const dumpster = this.createDumpster();
+          dumpster.position.set(baseX + 15, 0, baseZ + (Math.random() - 0.5) * 20);
+          dumpster.rotation.y = Math.random() * Math.PI;
+          this.detailsGroup.add(dumpster);
+          this.streetFurniture.push(dumpster);
+        }
+
+        // Chain link fence sections
+        if (Math.random() > 0.65) {
+          const fence = this.createChainLinkFence();
+          fence.position.set(baseX + 20, 0, baseZ);
+          this.detailsGroup.add(fence);
+          this.streetFurniture.push(fence);
+        }
+      }
+    }
+  }
+
+  private createDumpster(): THREE.Group {
+    const group = new THREE.Group();
+    const color = Math.random() > 0.5 ? 0x2a5a2a : 0x1a3a6a;
+
+    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
+
+    // Main body
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(3, 1.5, 2),
+      bodyMat
+    );
+    body.position.y = 0.75;
+    body.castShadow = true;
+    group.add(body);
+
+    // Lid (slightly open)
+    const lid = new THREE.Mesh(
+      new THREE.BoxGeometry(3.1, 0.1, 2.1),
+      new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 })
+    );
+    lid.position.set(0, 1.55, -0.3);
+    lid.rotation.x = Math.random() > 0.4 ? 0.4 : 0; // Some lids open
+    group.add(lid);
+
+    // Wheels
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const wheelPositions = [[-1.2, 0.15, 0.9], [1.2, 0.15, 0.9]];
+    wheelPositions.forEach(([wx, wy, wz]) => {
+      const wheel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.15, 0.1, 8),
+        wheelMat
+      );
+      wheel.position.set(wx, wy, wz);
+      wheel.rotation.x = Math.PI / 2;
+      group.add(wheel);
+    });
+
+    return group;
+  }
+
+  private createChainLinkFence(): THREE.Group {
+    const group = new THREE.Group();
+
+    // Fence posts
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.6 });
+    const postGeom = new THREE.CylinderGeometry(0.04, 0.04, 2.5, 6);
+
+    for (let i = 0; i < 4; i++) {
+      const post = new THREE.Mesh(postGeom, postMat);
+      post.position.set(i * 2.5, 1.25, 0);
+      group.add(post);
+    }
+
+    // Fence mesh (simplified as a plane)
+    const fenceMat = new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      transparent: true,
+      opacity: 0.6,
+      side: THREE.DoubleSide,
+      metalness: 0.4
+    });
+    const fenceMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(7.5, 2),
+      fenceMat
+    );
+    fenceMesh.position.set(3.75, 1.25, 0);
+    group.add(fenceMesh);
+
+    // Top rail
+    const rail = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, 7.5, 6),
+      postMat
+    );
+    rail.position.set(3.75, 2.3, 0);
+    rail.rotation.z = Math.PI / 2;
+    group.add(rail);
+
+    return group;
+  }
+
+  // ==================== STREET ATMOSPHERE ====================
+  private createStreetAtmosphere(): void {
+    if (this.isMobile) return;
+
+    // Street litter
+    this.createStreetLitter();
+
+    // Posters on lamp posts
+    this.createStreetPosters();
+  }
+
+  private createStreetLitter(): void {
+    // Scattered newspapers, coffee cups, bags
+    const litterMaterials = {
+      paper: new THREE.MeshStandardMaterial({ color: 0xddddcc, roughness: 0.9 }),
+      cup: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }),
+      bag: new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 }),
+    };
+
+    // Scatter litter across the city
+    for (let i = 0; i < 80; i++) {
+      const x = (Math.random() - 0.5) * 400;
+      const z = (Math.random() - 0.5) * 400;
+
+      // Newspaper
+      if (Math.random() > 0.6) {
+        const paper = new THREE.Mesh(
+          new THREE.BoxGeometry(0.3, 0.01, 0.4),
+          litterMaterials.paper
+        );
+        paper.position.set(x, 0.01, z);
+        paper.rotation.y = Math.random() * Math.PI;
+        paper.rotation.x = (Math.random() - 0.5) * 0.2;
+        this.detailsGroup.add(paper);
+      }
+
+      // Coffee cup
+      if (Math.random() > 0.75) {
+        const cup = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.03, 0.025, 0.12, 8),
+          litterMaterials.cup
+        );
+        cup.position.set(x + 0.5, 0.06, z);
+        cup.rotation.x = Math.PI / 2;
+        cup.rotation.z = Math.random() * Math.PI;
+        this.detailsGroup.add(cup);
+      }
+
+      // Plastic bag (crumpled)
+      if (Math.random() > 0.8) {
+        const bag = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(0.1, 0),
+          litterMaterials.bag
+        );
+        bag.position.set(x + 1, 0.1, z + 0.5);
+        bag.scale.set(1, 0.5, 1);
+        this.detailsGroup.add(bag);
+      }
+    }
+  }
+
+  private createStreetPosters(): void {
+    // Colorful posters on lamp posts
+    const posterColors = [0xff6600, 0x0066ff, 0xff0066, 0xffff00, 0x00ff66];
+
+    this.streetLamps.forEach((lamp, i) => {
+      if (Math.random() > 0.6) {
+        const poster = new THREE.Mesh(
+          new THREE.BoxGeometry(0.4, 0.5, 0.01),
+          new THREE.MeshStandardMaterial({
+            color: posterColors[i % posterColors.length],
+            roughness: 0.8
+          })
+        );
+        poster.position.copy(lamp.mesh.position);
+        poster.position.y = 2;
+        poster.position.x += 0.15;
+        this.detailsGroup.add(poster);
+      }
+    });
+  }
+
+  /**
+   * Mark all static city detail objects for rendering optimization
+   */
+  optimizeStaticObjects(): void {
+    let count = 0;
+
+    const markStatic = (obj: THREE.Object3D) => {
+      obj.traverse(child => {
+        child.userData.isStatic = true;
+        child.matrixAutoUpdate = false;
+        child.updateMatrix();
+        child.updateMatrixWorld(true);
+        count++;
+      });
+    };
+
+    // Street furniture is static
+    this.streetFurniture.forEach(markStatic);
+
+    // Building details are static
+    this.buildingDetails.forEach(d => markStatic(d.mesh));
+
+    // Puddles are static
+    this.puddles.forEach(markStatic);
+
+    // Storefronts are static
+    this.storefronts.forEach(s => markStatic(s.mesh));
+
+    // Street vendors are static (they don't actually move in this implementation)
+    this.streetVendors.forEach(v => markStatic(v.mesh));
+
+    console.log(`✅ Marked ${count} city detail objects as static`);
   }
 
   dispose(): void {
