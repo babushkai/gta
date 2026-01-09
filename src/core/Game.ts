@@ -17,12 +17,80 @@ import { UIManager } from '@/ui/UIManager';
 import { World } from '@/world/World';
 import { CityEventsManager } from '@/world/CityEventsManager';
 import { CityDetailsManager } from '@/world/CityDetailsManager';
+import { ChunkManager } from '@/world/ChunkManager';
 import { InteriorManager } from '@/interiors/InteriorManager';
 import { SaveManager } from './SaveManager';
 import { WeaponSystem } from '@/weapons/WeaponSystem';
 import { NetworkManager } from '@/network/NetworkManager';
 import { AssetManager } from './AssetManager';
 import { PerformanceManager } from './PerformanceManager';
+
+/**
+ * Detect Apple Silicon Mac (M1/M2/M3/M4 chips)
+ * Uses WebGL renderer info to identify Apple GPU
+ * Works with Chrome (ANGLE), Safari, and Firefox
+ */
+function detectAppleSilicon(): boolean {
+  const ua = navigator.userAgent;
+  const isMac = /Macintosh/.test(ua);
+
+  if (!isMac) {
+    console.log('🔍 GPU Detection: Not a Mac');
+    return false;
+  }
+
+  // Check for Apple GPU via WebGL
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+
+        console.log('🔍 GPU Detection - Renderer:', renderer);
+        console.log('🔍 GPU Detection - Vendor:', vendor);
+
+        // Check for Apple Silicon patterns:
+        // Safari: "Apple M1 Pro" or "Apple GPU"
+        // Chrome: "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Max, ...)"
+        // Firefox: "Apple M4 Max" or similar
+        const isAppleGPU = /Apple M\d|Apple GPU/i.test(renderer) ||
+                          (/Apple/.test(renderer) && !/Intel/.test(renderer)) ||
+                          (/ANGLE.*Apple.*M\d/i.test(renderer));
+
+        if (isAppleGPU) {
+          console.log('🍎 Apple Silicon detected:', renderer);
+          return true;
+        }
+
+        // Check if it's an Intel Mac
+        if (/Intel/.test(renderer)) {
+          console.log('💻 Intel Mac detected:', renderer);
+          return false;
+        }
+      }
+    }
+  } catch (e) {
+    console.log('🔍 GPU Detection: WebGL error', e);
+  }
+
+  // Fallback: Modern Macs (2020+) are likely Apple Silicon
+  // Check Safari on Mac as strong indicator
+  const isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
+  if (isSafari) {
+    console.log('🍎 Apple Silicon assumed (Safari on Mac)');
+    return true;
+  }
+
+  // Final fallback: Assume Apple Silicon for Macs (most new Macs are M-series)
+  console.log('🍎 Apple Silicon assumed (Mac detected, likely M-series)');
+  return true;
+}
+
+// Cache detection result
+const isAppleSilicon = detectAppleSilicon();
 
 export class Game extends EventEmitter {
   private static instance: Game;
@@ -44,6 +112,7 @@ export class Game extends EventEmitter {
   public world: World;
   public cityEvents: CityEventsManager;
   public cityDetails: CityDetailsManager;
+  public chunkManager: ChunkManager | null = null;
   public interiors: InteriorManager;
   public save: SaveManager;
   public weapons: WeaponSystem;
@@ -111,19 +180,58 @@ export class Game extends EventEmitter {
                      ('ontouchstart' in window) ||
                      window.innerWidth < 768;
 
+    // Apple Silicon M-series: Maximum quality settings
+    if (isAppleSilicon && !isMobile) {
+      console.log('🚀 Using Apple Silicon M4 hyper-optimized settings');
+      return {
+        debug: false,
+        graphics: {
+          antialias: true,          // Enable MSAA - M4 handles it easily
+          shadows: true,
+          shadowMapSize: 4096,      // 4K shadow maps for crisp shadows
+          postProcessing: true,
+          bloom: true,
+          ssao: true,               // Full SSAO enabled
+          dof: false,               // Keep disabled for responsiveness
+          motionBlur: false,
+          fov: 75,
+          drawDistance: 8000        // Extended visibility
+        },
+        audio: {
+          masterVolume: 1.0,
+          musicVolume: 0.7,
+          sfxVolume: 0.8,
+          radioVolume: 0.6
+        },
+        physics: {
+          gravity: -30,
+          substeps: 3,              // Higher physics accuracy
+          friction: 0.5,
+          restitution: 0.3
+        },
+        gameplay: {
+          difficulty: 'normal',
+          autoAim: false,
+          invertY: false,
+          mouseSensitivity: 0.5
+        }
+      };
+    }
+
+    // Standard desktop/mobile config
     return {
       debug: false,
       graphics: {
-        antialias: false, // Disable everywhere for performance
-        shadows: !isMobile, // Disable shadows on mobile
-        shadowMapSize: isMobile ? 256 : 1024, // Smaller shadow maps
-        postProcessing: !isMobile, // Lofi vibe on desktop
-        bloom: !isMobile, // Glow effects for neon/lights
-        ssao: false, // Disable SSAO everywhere (expensive)
+        antialias: false,           // Disable for performance
+        shadows: !isMobile,
+        shadowMapSize: isMobile ? 256 : 1024,
+        postProcessing: !isMobile,
+        bloom: !isMobile,
+        ssao: false,
         dof: false,
-        motionBlur: false, // Disable motion blur
+        motionBlur: false,
         fov: 75,
-        drawDistance: isMobile ? 500 : 5000 // Extended for skybox visibility
+        drawDistance: isMobile ? 500 : 5000
       },
       audio: {
         masterVolume: 1.0,
@@ -133,13 +241,13 @@ export class Game extends EventEmitter {
       },
       physics: {
         gravity: -30,
-        substeps: isMobile ? 2 : 3, // Fewer physics substeps
+        substeps: 2,
         friction: 0.5,
         restitution: 0.3
       },
       gameplay: {
         difficulty: 'normal',
-        autoAim: isMobile, // Enable auto-aim on mobile
+        autoAim: isMobile,
         invertY: false,
         mouseSensitivity: 0.5
       }
@@ -171,6 +279,10 @@ export class Game extends EventEmitter {
 
       this.updateLoadingProgress(25, 'Loading world...');
       await this.world.initialize();
+
+      this.updateLoadingProgress(27, 'Initializing world streaming...');
+      this.chunkManager = new ChunkManager(this);
+      await this.chunkManager.initialize();
 
       this.updateLoadingProgress(30, 'Bringing city to life...');
       await this.cityEvents.initialize();
@@ -285,6 +397,9 @@ export class Game extends EventEmitter {
     console.log('Game started!');
   }
 
+  // Performance: frame counter for staggered updates
+  private frameCounter: number = 0;
+
   private gameLoop(): void {
     if (!this.isRunning) return;
 
@@ -301,6 +416,9 @@ export class Game extends EventEmitter {
   }
 
   private update(deltaTime: number): void {
+    this.frameCounter++;
+
+    // === CRITICAL PATH (every frame) ===
     // 1. Process vehicle input (sets forces for physics)
     this.vehicles.update(deltaTime);
 
@@ -309,30 +427,55 @@ export class Game extends EventEmitter {
     this.vehiclePhysics.update(deltaTime);
 
     // 3. Sync mesh positions from physics bodies BEFORE player update
-    //    This ensures player camera sees the correct vehicle position
     this.vehicles.syncWithPhysics();
     this.player.syncWithPhysics();
 
     // 4. Update player (uses synced vehicle position for camera)
     this.player.update(deltaTime);
 
-    // 5. Update AI and traffic
+    // 5. Update weapons (critical for combat responsiveness)
+    this.weapons.update(deltaTime);
+
+    // === HIGH PRIORITY (every frame) ===
+    // 6. Update AI and traffic
     this.ai.update(deltaTime);
     this.traffic.update(deltaTime);
 
-    // 6. Update non-physics systems
-    this.missions.update(deltaTime);
-    this.weather.update(deltaTime);
-    this.world.update(deltaTime);
-    this.cityEvents.update(deltaTime);
-    this.cityDetails.update(deltaTime);
-    this.interiors.update(deltaTime);
-    this.weapons.update(deltaTime);
-    this.ui.update(deltaTime);
-    this.network.update(deltaTime);
+    // === MEDIUM PRIORITY (staggered updates) ===
+    // 7. Update world systems (stagger across frames)
+    const frame2 = this.frameCounter % 2;
+    const frame3 = this.frameCounter % 3;
 
-    // 7. Update performance manager (adaptive quality)
-    this.performance?.update(deltaTime);
+    if (frame2 === 0) {
+      // Update chunk streaming based on player position
+      this.chunkManager?.update(this.player.position);
+      this.world.update(deltaTime * 2);
+      this.cityDetails.update(deltaTime * 2);
+    }
+
+    if (frame2 === 1) {
+      this.cityEvents.update(deltaTime * 2);
+      this.interiors.update(deltaTime * 2);
+    }
+
+    // === LOW PRIORITY (every 3rd frame) ===
+    if (frame3 === 0) {
+      this.missions.update(deltaTime * 3);
+      this.weather.update(deltaTime * 3);
+    }
+
+    // === UI (every frame but lightweight) ===
+    this.ui.update(deltaTime);
+
+    // === NETWORK (every 2nd frame) ===
+    if (frame2 === 0) {
+      this.network.update(deltaTime * 2);
+    }
+
+    // === PERFORMANCE (every 10th frame) ===
+    if (this.frameCounter % 10 === 0) {
+      this.performance?.update(deltaTime * 10);
+    }
   }
 
   private render(): void {

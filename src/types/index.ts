@@ -73,6 +73,9 @@ export interface PlayerState {
   currentBuildingId: string | null;
   isClimbing: boolean;
   climbingType: 'none' | 'ladder' | 'ledge' | 'pulling_up';
+  // Spiderman web-swinging states
+  hasSpidermanSuit: boolean;
+  isSwinging: boolean;
 }
 
 // Vehicle Types
@@ -373,7 +376,8 @@ export type PickupType =
   | 'money'
   | 'weapon'
   | 'ammo'
-  | 'special';
+  | 'special'
+  | 'spiderman_suit';
 
 // Save Types
 export interface SaveData {

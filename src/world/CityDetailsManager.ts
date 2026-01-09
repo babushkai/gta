@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Game } from '@/core/Game';
 import { BuildingMetadata } from './World';
+import { InstancedRenderer, OptimizedGeometries, OptimizedMaterials } from '@/core/InstancedRenderer';
 
 interface NeonSign {
   mesh: THREE.Group;
@@ -67,7 +68,10 @@ export class CityDetailsManager {
 
   // Performance: throttle updates
   private updateAccumulator: number = 0;
-  private updateInterval: number = 0.1; // Update every 100ms instead of every frame
+  private updateInterval: number = 0.3; // Update every 300ms for better performance
+
+  // GPU Instancing for street furniture (massive performance boost)
+  private instancedRenderer: InstancedRenderer;
 
   constructor(game: Game) {
     this.game = game;
@@ -75,6 +79,9 @@ export class CityDetailsManager {
     this.detailsGroup.name = 'detailsGroup';
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
       ('ontouchstart' in window) || window.innerWidth < 768;
+
+    // Initialize instanced renderer for repeated objects
+    this.instancedRenderer = new InstancedRenderer();
   }
 
   getDetailsGroup(): THREE.Group {
@@ -82,7 +89,10 @@ export class CityDetailsManager {
   }
 
   async initialize(): Promise<void> {
-    this.createStreetFurniture();
+    // Initialize instanced meshes for street furniture (GPU instancing)
+    this.initializeInstancedMeshes();
+    this.createInstancedStreetFurniture();
+
     this.createNeonSigns();
     this.createBillboards();
     this.createSubwayEntrances();
@@ -98,11 +108,142 @@ export class CityDetailsManager {
     this.createDistrictAtmosphere();
     this.createStreetAtmosphere();
 
+    // Add instanced renderer group to scene
+    this.game.scene.add(this.instancedRenderer.getGroup());
+
     // Add detailsGroup to scene
     this.game.scene.add(this.detailsGroup);
+
+    // Log instancing stats
+    const stats = this.instancedRenderer.getStats();
+    console.log(`✅ Instanced ${stats.totalInstances} objects into ${stats.drawCalls} draw calls`);
   }
 
-  // ==================== STREET FURNITURE ====================
+  /**
+   * Initialize GPU instanced mesh types
+   */
+  private initializeInstancedMeshes(): void {
+    const maxInstances = this.isMobile ? 50 : 150;
+
+    // Register all instanced mesh types
+    this.instancedRenderer.registerType(
+      'fireHydrant',
+      OptimizedGeometries.fireHydrant(),
+      OptimizedMaterials.fireHydrant,
+      maxInstances
+    );
+
+    this.instancedRenderer.registerType(
+      'trashCan',
+      OptimizedGeometries.trashCan(),
+      OptimizedMaterials.trashCan,
+      maxInstances
+    );
+
+    this.instancedRenderer.registerType(
+      'mailbox',
+      OptimizedGeometries.mailbox(),
+      OptimizedMaterials.mailbox,
+      maxInstances
+    );
+
+    this.instancedRenderer.registerType(
+      'parkingMeter',
+      OptimizedGeometries.parkingMeter(),
+      OptimizedMaterials.parkingMeter,
+      maxInstances * 2
+    );
+
+    this.instancedRenderer.registerType(
+      'lampPole',
+      OptimizedGeometries.lampPole(),
+      OptimizedMaterials.lampPole,
+      maxInstances
+    );
+
+    this.instancedRenderer.registerType(
+      'tree',
+      OptimizedGeometries.tree(),
+      OptimizedMaterials.treeFoliage,
+      maxInstances
+    );
+
+    this.instancedRenderer.registerType(
+      'bush',
+      OptimizedGeometries.bush(),
+      OptimizedMaterials.bush,
+      maxInstances
+    );
+  }
+
+  /**
+   * Create street furniture using GPU instancing (massive performance boost)
+   * Replaces hundreds of draw calls with ~7 draw calls
+   */
+  private createInstancedStreetFurniture(): void {
+    const gridSize = 50;
+    const range = this.isMobile ? 3 : 5;
+
+    for (let x = -range; x <= range; x++) {
+      for (let z = -range; z <= range; z++) {
+        const baseX = x * gridSize;
+        const baseZ = z * gridSize;
+
+        // Fire hydrants at corners
+        if (Math.random() > 0.7) {
+          this.instancedRenderer.addInstance(
+            'fireHydrant',
+            new THREE.Vector3(baseX + 8, 0, baseZ + 8)
+          );
+        }
+
+        // Trash cans
+        if (Math.random() > 0.5) {
+          this.instancedRenderer.addInstance(
+            'trashCan',
+            new THREE.Vector3(baseX + 6 + Math.random() * 4, 0, baseZ + 7)
+          );
+        }
+
+        // Mailboxes
+        if (Math.random() > 0.8) {
+          this.instancedRenderer.addInstance(
+            'mailbox',
+            new THREE.Vector3(baseX + 9, 0, baseZ - 5 + Math.random() * 10)
+          );
+        }
+
+        // Parking meters
+        if (Math.random() > 0.6) {
+          for (let i = 0; i < 3; i++) {
+            this.instancedRenderer.addInstance(
+              'parkingMeter',
+              new THREE.Vector3(baseX + 5, 0, baseZ + i * 3 - 3)
+            );
+          }
+        }
+
+        // Trees (park areas)
+        if ((x === 0 || x === 1) && (z === 0 || z === 1)) {
+          for (let i = 0; i < 3; i++) {
+            this.instancedRenderer.addInstance(
+              'tree',
+              new THREE.Vector3(
+                baseX + 10 + Math.random() * 20,
+                0,
+                baseZ + 10 + Math.random() * 20
+              )
+            );
+          }
+        }
+      }
+    }
+
+    // Finalize all instances
+    this.instancedRenderer.finalize();
+  }
+
+  // ==================== STREET FURNITURE (legacy - kept for complex objects) ====================
   private createStreetFurniture(): void {
     const gridSize = 50;
     const range = 5;
@@ -3169,6 +3310,7 @@ export class CityDetailsManager {
    */
   optimizeStaticObjects(): void {
     let count = 0;
+    let cullingEnabled = 0;
 
     const markStatic = (obj: THREE.Object3D) => {
       obj.traverse(child => {
@@ -3177,6 +3319,19 @@ export class CityDetailsManager {
         child.updateMatrix();
         child.updateMatrixWorld(true);
         count++;
+
+        // Enable frustum culling and compute bounding spheres
+        if (child instanceof THREE.Mesh) {
+          child.frustumCulled = true;
+          if (child.geometry && !child.geometry.boundingSphere) {
+            child.geometry.computeBoundingSphere();
+          }
+          cullingEnabled++;
+        }
+
+        if (child instanceof THREE.Group) {
+          child.frustumCulled = true;
+        }
       });
     };
 
@@ -3195,7 +3350,20 @@ export class CityDetailsManager {
     // Street vendors are static (they don't actually move in this implementation)
     this.streetVendors.forEach(v => markStatic(v.mesh));
 
-    console.log(`✅ Marked ${count} city detail objects as static`);
+    // Optimize detailsGroup
+    this.detailsGroup.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        child.frustumCulled = true;
+        child.matrixAutoUpdate = false;
+        child.updateMatrix();
+        if (child.geometry && !child.geometry.boundingSphere) {
+          child.geometry.computeBoundingSphere();
+        }
+        cullingEnabled++;
+      }
+    });
+
+    console.log(`✅ Marked ${count} city detail objects as static, enabled culling on ${cullingEnabled} meshes`);
   }
 
   dispose(): void {

@@ -36,15 +36,20 @@ export class RapierVehiclePhysics {
   }
 
   createGroundPlane(): void {
-    if (!this.initialized) return;
+    if (!this.initialized) {
+      console.warn('⚠️ Rapier not initialized, cannot create ground plane');
+      return;
+    }
 
-    // Create a large static ground plane
-    const groundColliderDesc = RAPIER.ColliderDesc.cuboid(500, 0.1, 500)
-      .setTranslation(0, -0.1, 0)
-      .setFriction(0.8)
+    // Create a large static ground plane - covers 2000x2000 map
+    // Half-extents of 1000 = 2000x2000 total area
+    const groundColliderDesc = RAPIER.ColliderDesc.cuboid(1000, 1, 1000)
+      .setTranslation(0, -1, 0)
+      .setFriction(1.0)
       .setRestitution(0.0);
 
     this.groundCollider = this.world.createCollider(groundColliderDesc);
+    console.log('✅ Rapier ground plane created: 2000x2000 units (±1000 from center)');
   }
 
   createVehicle(
@@ -737,8 +742,8 @@ export class RapierVehiclePhysics {
     const linvel = chassis.linvel();
 
     // Check if vehicle is roughly grounded (low vertical velocity)
-    // This prevents double jumps in mid-air
-    if (Math.abs(linvel.y) > 2) return false;
+    // More lenient check to allow jumps
+    if (Math.abs(linvel.y) > 5) return false;
 
     // Check if at least one wheel has ground contact via suspension
     const controller = vehicle.controller;
@@ -747,8 +752,8 @@ export class RapierVehiclePhysics {
 
     for (let i = 0; i < numWheels; i++) {
       const suspensionLength = controller.wheelSuspensionLength(i) ?? 0;
-      // If suspension is compressed, wheel has contact
-      if (suspensionLength < 0.7) {
+      // If suspension is not fully extended, wheel likely has contact
+      if (suspensionLength < 1.0) {
         hasGroundContact = true;
         break;
       }
@@ -756,21 +761,75 @@ export class RapierVehiclePhysics {
 
     if (!hasGroundContact) return false;
 
-    // Apply upward impulse - different for motorcycles vs cars
+    // Apply POWERFUL upward impulse - GTA-style dramatic jump
     const isMotorcycle = vehicle.vehicleType === 'motorcycle';
-    const jumpStrength = isMotorcycle ? 400 : 800; // Motorcycles are lighter
+    const jumpStrength = isMotorcycle ? 1200 : 2500; // Much stronger jump
 
     // Apply impulse at center of mass
     chassis.applyImpulse({ x: 0, y: jumpStrength, z: 0 }, true);
 
     // Slight pitch backward for dramatic effect (wheelie style)
     if (isMotorcycle) {
-      chassis.applyTorqueImpulse({ x: 5, y: 0, z: 0 }, true);
+      chassis.applyTorqueImpulse({ x: 8, y: 0, z: 0 }, true);
     } else {
-      chassis.applyTorqueImpulse({ x: 3, y: 0, z: 0 }, true);
+      chassis.applyTorqueImpulse({ x: 5, y: 0, z: 0 }, true);
     }
 
     return true;
+  }
+
+  /**
+   * Add a static box collider for buildings/obstacles that vehicles can collide with
+   */
+  addStaticBox(
+    position: { x: number; y: number; z: number },
+    halfExtents: { x: number; y: number; z: number },
+    rotation?: { x: number; y: number; z: number; w: number }
+  ): RAPIER.Collider | null {
+    if (!this.initialized) return null;
+
+    const colliderDesc = RAPIER.ColliderDesc.cuboid(
+      halfExtents.x,
+      halfExtents.y,
+      halfExtents.z
+    )
+      .setTranslation(position.x, position.y, position.z)
+      .setFriction(0.5)
+      .setRestitution(0.2);
+
+    if (rotation) {
+      colliderDesc.setRotation(rotation);
+    }
+
+    return this.world.createCollider(colliderDesc);
+  }
+
+  /**
+   * Add highway ramp collider with rotation for sloped surfaces
+   */
+  addRampCollider(
+    position: { x: number; y: number; z: number },
+    halfExtents: { x: number; y: number; z: number },
+    rotationEuler: { x: number; y: number; z: number }
+  ): RAPIER.Collider | null {
+    if (!this.initialized) return null;
+
+    // Convert euler to quaternion
+    const quat = new THREE.Quaternion();
+    const euler = new THREE.Euler(rotationEuler.x, rotationEuler.y, rotationEuler.z);
+    quat.setFromEuler(euler);
+
+    const colliderDesc = RAPIER.ColliderDesc.cuboid(
+      halfExtents.x,
+      halfExtents.y,
+      halfExtents.z
+    )
+      .setTranslation(position.x, position.y, position.z)
+      .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
+      .setFriction(0.8)
+      .setRestitution(0.0);
+
+    return this.world.createCollider(colliderDesc);
   }
 
   dispose(): void {

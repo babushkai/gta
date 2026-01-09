@@ -279,19 +279,46 @@ export class WeatherSystem {
     this.sun.position.set(100, 100, 50);
     this.sun.castShadow = true;
 
-    // Detect mobile for performance adjustments
+    // Detect mobile and Apple Silicon for performance adjustments
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || ('ontouchstart' in window);
 
-    // Shadow quality - higher resolution for desktop, lower for mobile
-    const shadowMapSize = isMobile ? 1024 : 2048;
+    // Detect Apple Silicon for ultra quality shadows
+    // Works with Chrome (ANGLE), Safari, and Firefox
+    let isAppleSilicon = false;
+    const isMac = /Macintosh/.test(navigator.userAgent);
+    if (isMac) {
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+        if (gl) {
+          const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+          if (debugInfo) {
+            const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+            // Check for Apple Silicon patterns (Safari, Chrome ANGLE, Firefox)
+            isAppleSilicon = /Apple M\d|Apple GPU/i.test(renderer) ||
+                            (/Apple/.test(renderer) && !/Intel/.test(renderer)) ||
+                            (/ANGLE.*Apple.*M\d/i.test(renderer));
+          }
+        }
+      } catch (e) { /* ignore */ }
+      // Fallback: Assume Apple Silicon for Macs
+      if (!isAppleSilicon) isAppleSilicon = true;
+    }
+
+    // Shadow quality - 4K for Apple Silicon, 2K for desktop, 1K for mobile
+    const shadowMapSize = isMobile ? 1024 : (isAppleSilicon ? 4096 : 2048);
     this.sun.shadow.mapSize.width = shadowMapSize;
     this.sun.shadow.mapSize.height = shadowMapSize;
 
+    if (isAppleSilicon) {
+      console.log('🍎 Shadows: Using 4K shadow maps for M4');
+    }
+
     // Shadow camera follows player - covers area around player
-    // Increased range for better shadow coverage of tall buildings
-    const shadowRange = isMobile ? 80 : 120;
+    // Increased range for Apple Silicon
+    const shadowRange = isMobile ? 80 : (isAppleSilicon ? 150 : 120);
     this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 300; // Shadow range for nearby objects only
+    this.sun.shadow.camera.far = isAppleSilicon ? 400 : 300;
     this.sun.shadow.camera.left = -shadowRange;
     this.sun.shadow.camera.right = shadowRange;
     this.sun.shadow.camera.top = shadowRange;
@@ -300,7 +327,7 @@ export class WeatherSystem {
     // Improved shadow bias to reduce peter-panning and shadow acne
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.02;
-    this.sun.shadow.radius = isMobile ? 1 : 2; // Softer on desktop
+    this.sun.shadow.radius = isMobile ? 1 : (isAppleSilicon ? 3 : 2); // Softest on Apple Silicon
 
     // Add a secondary fill light to simulate sky bounce light
     const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.25);

@@ -104,12 +104,13 @@ export class World {
     this.createGround();
     this.initializeInstancedMeshes();
     this.createRoads();
+    this.createHighway();
     this.createBuildings();
     this.createStreetLights();
     this.createPickups();
     this.createDestructibles();
 
-    this.game.physics.createGroundPlane(1000);
+    this.game.physics.createGroundPlane(2000);
 
     // Add worldGroup to scene (allows hiding entire world for interiors)
     this.game.scene.add(this.worldGroup);
@@ -157,15 +158,17 @@ export class World {
   }
 
   private createGround(): void {
-    const groundSize = 1000;
+    // Map size: 2000x2000 units for good performance
+    const groundSize = 2000;
 
-    const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 200, 200);
+    // Optimized segments for performance
+    const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 50, 50);
 
     // Create procedural grass texture
     const grassTexture = this.createGrassTexture();
     grassTexture.wrapS = THREE.RepeatWrapping;
     grassTexture.wrapT = THREE.RepeatWrapping;
-    grassTexture.repeat.set(100, 100);
+    grassTexture.repeat.set(200, 200); // Adjusted for smaller map
 
     const groundMaterial = new THREE.MeshStandardMaterial({
       color: 0x4a6b4a,
@@ -443,146 +446,608 @@ export class World {
     }
 
     // Add subway entrances at key locations
-    this.createSubwayEntrance(0, 0);
-    this.createSubwayEntrance(120, 90);
-    this.createSubwayEntrance(-120, -90);
-    this.createSubwayEntrance(60, 180);
+    // Subway entrances removed for clear roads
 
     // Add NYC street details
     this.createStreetFurniture();
     this.createScaffolding();
   }
 
-  // NYC street furniture - trash cans, newspaper boxes, mailboxes
-  private createStreetFurniture(): void {
-    const trashCanMat = new THREE.MeshStandardMaterial({ color: 0x2A5A2A, roughness: 0.7 });
-    const mailboxMat = new THREE.MeshStandardMaterial({ color: 0x1E3D59, roughness: 0.5, metalness: 0.3 });
-    const newsPaperMat = new THREE.MeshStandardMaterial({ color: 0xFFD700, roughness: 0.4, metalness: 0.3 });
+  // CRAZY elevated highway system - multi-level expressway with jumps
+  private createHighway(): void {
+    const roadWidth = 12;
 
-    // Place furniture at intersections
-    for (let x = -4; x <= 4; x++) {
-      for (let z = -5; z <= 5; z++) {
-        const baseX = x * 60;
-        const baseZ = z * 45;
+    // Materials
+    const roadMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1a1a1a,
+      roughness: 0.9
+    });
+    const pillarMaterial = new THREE.MeshStandardMaterial({
+      color: 0x505050,
+      roughness: 0.8
+    });
+    const barrierMaterial = new THREE.MeshStandardMaterial({
+      color: 0xFFCC00, // Yellow safety barriers
+      roughness: 0.5,
+      metalness: 0.3
+    });
 
-        // NYC green trash can
-        if (Math.random() > 0.4) {
-          const trashCan = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.35, 1, 12), trashCanMat);
-          trashCan.position.set(baseX + 8, 0.5, baseZ + 6);
-          trashCan.castShadow = true;
-          this.worldGroup.add(trashCan);
+    // Helper to create highway segment with collision
+    const createSegment = (
+      x: number, y: number, z: number,
+      width: number, length: number,
+      rotY: number = 0, rotX: number = 0, rotZ: number = 0
+    ) => {
+      // Road deck
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(width, 0.8, length),
+        roadMaterial
+      );
+      deck.position.set(x, y, z);
+      deck.rotation.set(rotX, rotY, rotZ);
+      deck.receiveShadow = true;
+      this.worldGroup.add(deck);
 
-          // Trash spilling out
-          if (Math.random() > 0.6) {
-            const trashMat = new THREE.MeshBasicMaterial({ color: 0x8B7355 });
-            for (let i = 0; i < 3; i++) {
-              const trash = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.2), trashMat);
-              trash.position.set(
-                baseX + 8 + (Math.random() - 0.5) * 1.5,
-                0.05,
-                baseZ + 6 + (Math.random() - 0.5) * 1.5
-              );
-              trash.rotation.y = Math.random() * Math.PI;
-              this.worldGroup.add(trash);
-            }
-          }
-        }
+      // Rapier collision (critical for cars!)
+      this.game.vehiclePhysics.addRampCollider(
+        { x, y, z },
+        { x: width / 2, y: 0.4, z: length / 2 },
+        { x: rotX, y: rotY, z: rotZ }
+      );
 
-        // Blue USPS mailbox
-        if (Math.random() > 0.85) {
-          const mailbox = new THREE.Group();
-          const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 0.5), mailboxMat);
-          body.position.y = 0.6;
-          mailbox.add(body);
-          const top = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.15, 0.55), mailboxMat);
-          top.position.y = 1.25;
-          mailbox.add(top);
-          mailbox.position.set(baseX - 8, 0, baseZ + 7);
-          mailbox.castShadow = true;
-          this.worldGroup.add(mailbox);
-        }
+      // Yellow edge barriers
+      for (const side of [-1, 1]) {
+        const barrier = new THREE.Mesh(
+          new THREE.BoxGeometry(0.5, 1.5, length),
+          barrierMaterial
+        );
+        barrier.position.set(x + (width / 2 - 0.25) * side, y + 0.75, z);
+        barrier.rotation.set(rotX, rotY, rotZ);
+        this.worldGroup.add(barrier);
+      }
 
-        // Newspaper box
-        if (Math.random() > 0.8) {
-          const newsBox = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.1, 0.4), newsPaperMat);
-          newsBox.position.set(baseX + 9, 0.55, baseZ - 6);
-          newsBox.castShadow = true;
-          this.worldGroup.add(newsBox);
-        }
+      return deck;
+    };
+
+    // Helper for pillars
+    const createPillar = (x: number, z: number, height: number) => {
+      const pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.5, 2, height, 8),
+        pillarMaterial
+      );
+      pillar.position.set(x, height / 2, z);
+      pillar.castShadow = true;
+      this.worldGroup.add(pillar);
+    };
+
+    // ============ LEVEL 1: Main highway loop (height 12) ============
+    const h1 = 12;
+
+    // West side (N-S)
+    createSegment(-80, h1, 0, roadWidth, 300, 0);
+    for (let z = -140; z <= 140; z += 40) createPillar(-80, z, h1);
+
+    // South side (E-W)
+    createSegment(40, h1, -150, 240, roadWidth, Math.PI / 2);
+    for (let x = -60; x <= 140; x += 40) createPillar(x, -150, h1);
+
+    // East side (N-S)
+    createSegment(160, h1, -50, roadWidth, 200, 0);
+    for (let z = -140; z <= 40; z += 40) createPillar(160, z, h1);
+
+    // North connector
+    createSegment(40, h1, 140, 240, roadWidth, Math.PI / 2);
+    for (let x = -60; x <= 140; x += 40) createPillar(x, 140, h1);
+
+    // ============ LEVEL 2: Higher crossover (height 22) ============
+    const h2 = 22;
+
+    // Dramatic crosstown elevated section
+    createSegment(0, h2, 0, roadWidth, 200, Math.PI / 2);
+    for (let x = -90; x <= 90; x += 45) createPillar(x, 0, h2);
+
+    // ============ JUMP RAMPS ============
+    const jumpMat = new THREE.MeshStandardMaterial({
+      color: 0xFF4400,
+      roughness: 0.4,
+      metalness: 0.2
+    });
+
+    // Jump ramp 1 - on west highway going up
+    const jump1 = new THREE.Mesh(
+      new THREE.BoxGeometry(roadWidth, 0.8, 25),
+      jumpMat
+    );
+    jump1.position.set(-80, h1 + 2, 60);
+    jump1.rotation.x = -0.2; // Angled up
+    this.worldGroup.add(jump1);
+    this.game.vehiclePhysics.addRampCollider(
+      { x: -80, y: h1 + 2, z: 60 },
+      { x: roadWidth / 2, y: 0.4, z: 12.5 },
+      { x: -0.2, y: 0, z: 0 }
+    );
+
+    // Jump ramp 2 - on south highway
+    const jump2 = new THREE.Mesh(
+      new THREE.BoxGeometry(25, 0.8, roadWidth),
+      jumpMat
+    );
+    jump2.position.set(80, h1 + 2, -150);
+    jump2.rotation.z = 0.2;
+    this.worldGroup.add(jump2);
+    this.game.vehiclePhysics.addRampCollider(
+      { x: 80, y: h1 + 2, z: -150 },
+      { x: 12.5, y: 0.4, z: roadWidth / 2 },
+      { x: 0, y: 0, z: 0.2 }
+    );
+
+    // ============ SPIRAL RAMP from ground to Level 1 ============
+    const spiralX = -120;
+    const spiralZ = -80;
+    const spiralSegments = 8;
+    const spiralRadius = 20;
+
+    for (let i = 0; i < spiralSegments; i++) {
+      const angle = (i / spiralSegments) * Math.PI * 1.5; // 270 degrees
+      const nextAngle = ((i + 1) / spiralSegments) * Math.PI * 1.5;
+      const height = (i / spiralSegments) * h1 + 1;
+
+      const segX = spiralX + Math.cos(angle) * spiralRadius;
+      const segZ = spiralZ + Math.sin(angle) * spiralRadius;
+
+      const ramp = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 0.6, 16),
+        roadMaterial
+      );
+      ramp.position.set(segX, height, segZ);
+      ramp.rotation.y = -angle + Math.PI / 2;
+      ramp.rotation.x = 0.1; // Slight incline
+      this.worldGroup.add(ramp);
+
+      this.game.vehiclePhysics.addRampCollider(
+        { x: segX, y: height, z: segZ },
+        { x: 4, y: 0.3, z: 8 },
+        { x: 0.1, y: -angle + Math.PI / 2, z: 0 }
+      );
+
+      // Pillar for spiral
+      if (i % 2 === 0) {
+        createPillar(segX, segZ, height);
       }
     }
 
-    // Add some scattered garbage bags
-    const garbageMat = new THREE.MeshStandardMaterial({ color: 0x1A1A1A, roughness: 0.9 });
-    for (let i = 0; i < 30; i++) {
-      const bag = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 4), garbageMat);
-      bag.scale.set(1, 0.7, 1.2);
-      bag.position.set(
-        (Math.random() - 0.5) * 400,
-        0.25,
-        (Math.random() - 0.5) * 400
+    // Ground entry for spiral
+    createSegment(spiralX + spiralRadius, 0.5, spiralZ - 20, 8, 30, 0);
+
+    // ============ STRAIGHT RAMP from ground to Level 1 (East side) ============
+    const rampLength = 50;
+    const rampHeight = h1;
+    const rampAngle = Math.atan(rampHeight / rampLength);
+
+    for (let i = 0; i < 5; i++) {
+      const segHeight = (i + 0.5) * (rampHeight / 5);
+      const segZ = -150 + (i + 0.5) * (rampLength / 5);
+
+      const rampSeg = new THREE.Mesh(
+        new THREE.BoxGeometry(roadWidth, 0.6, rampLength / 5 + 1),
+        roadMaterial
       );
-      this.worldGroup.add(bag);
+      rampSeg.position.set(200, segHeight, segZ);
+      rampSeg.rotation.x = -rampAngle;
+      this.worldGroup.add(rampSeg);
+
+      this.game.vehiclePhysics.addRampCollider(
+        { x: 200, y: segHeight, z: segZ },
+        { x: roadWidth / 2, y: 0.3, z: (rampLength / 5 + 1) / 2 },
+        { x: -rampAngle, y: 0, z: 0 }
+      );
+
+      // Yellow barriers on ramp
+      for (const side of [-1, 1]) {
+        const rampBarrier = new THREE.Mesh(
+          new THREE.BoxGeometry(0.4, 1, rampLength / 5),
+          barrierMaterial
+        );
+        rampBarrier.position.set(200 + (roadWidth / 2 - 0.2) * side, segHeight + 0.5, segZ);
+        rampBarrier.rotation.x = -rampAngle;
+        this.worldGroup.add(rampBarrier);
+      }
+    }
+
+    // Ground connection for straight ramp
+    createSegment(200, 0.5, -190, roadWidth, 30, 0);
+
+    // ============ RAMP from Level 1 to Level 2 ============
+    const l2RampSegs = 4;
+    const l2RampLen = 40;
+    const l2HeightDiff = h2 - h1;
+
+    for (let i = 0; i < l2RampSegs; i++) {
+      const segH = h1 + (i + 0.5) * (l2HeightDiff / l2RampSegs);
+      const segX = -80 + (i + 0.5) * (l2RampLen / l2RampSegs);
+
+      const l2Ramp = new THREE.Mesh(
+        new THREE.BoxGeometry(l2RampLen / l2RampSegs + 1, 0.6, roadWidth),
+        roadMaterial
+      );
+      l2Ramp.position.set(segX, segH, -30);
+      l2Ramp.rotation.z = -Math.atan(l2HeightDiff / l2RampLen);
+      this.worldGroup.add(l2Ramp);
+
+      this.game.vehiclePhysics.addRampCollider(
+        { x: segX, y: segH, z: -30 },
+        { x: (l2RampLen / l2RampSegs + 1) / 2, y: 0.3, z: roadWidth / 2 },
+        { x: 0, y: 0, z: -Math.atan(l2HeightDiff / l2RampLen) }
+      );
     }
   }
 
-  // Construction scaffolding on some buildings
-  private createScaffolding(): void {
-    const scaffoldMat = new THREE.MeshStandardMaterial({ color: 0x4A4A4A, metalness: 0.6, roughness: 0.5 });
-    const plywoodMat = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.9 });
+  private createRealisticRamp(
+    highwayX: number,
+    highwayZ: number,
+    highwaySide: 'north' | 'south' | 'east' | 'west',
+    highwayHeight: number
+  ): void {
+    const rampWidth = 8;
+    const groundEntryLength = 15; // Flat section at ground level
+    const slopeLength = 60; // Slope length
+    const mergeLength = 12; // Merge section at highway level
+    const numSlopeSegments = 5; // Fewer segments for performance
 
-    // Add scaffolding to a few random locations
-    const scaffoldLocations = [
-      { x: 30, z: 60, width: 15, height: 20 },
-      { x: -90, z: -30, width: 12, height: 25 },
-      { x: 120, z: 45, width: 18, height: 15 },
-      { x: -45, z: 90, width: 10, height: 18 },
-    ];
-
-    scaffoldLocations.forEach(loc => {
-      const scaffoldGroup = new THREE.Group();
-
-      // Vertical poles
-      for (let i = 0; i <= Math.floor(loc.width / 3); i++) {
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, loc.height, 8), scaffoldMat);
-        pole.position.set(i * 3, loc.height / 2, 0);
-        scaffoldGroup.add(pole);
-
-        const pole2 = pole.clone();
-        pole2.position.z = 1.5;
-        scaffoldGroup.add(pole2);
-      }
-
-      // Horizontal bars and platforms
-      for (let level = 0; level < Math.floor(loc.height / 3); level++) {
-        // Platform
-        const platform = new THREE.Mesh(new THREE.BoxGeometry(loc.width, 0.15, 1.5), plywoodMat);
-        platform.position.set(loc.width / 2, level * 3 + 2, 0.75);
-        scaffoldGroup.add(platform);
-
-        // Cross braces
-        for (let i = 0; i < Math.floor(loc.width / 3); i++) {
-          const brace = new THREE.Mesh(new THREE.BoxGeometry(0.03, 3.5, 0.03), scaffoldMat);
-          brace.rotation.z = Math.PI / 6;
-          brace.position.set(i * 3 + 1.5, level * 3 + 0.5, 0);
-          scaffoldGroup.add(brace);
-        }
-      }
-
-      // Green safety netting
-      const netMat = new THREE.MeshBasicMaterial({
-        color: 0x228B22,
-        transparent: true,
-        opacity: 0.4,
-        side: THREE.DoubleSide
-      });
-      const net = new THREE.Mesh(new THREE.PlaneGeometry(loc.width, loc.height), netMat);
-      net.position.set(loc.width / 2, loc.height / 2, -0.1);
-      scaffoldGroup.add(net);
-
-      scaffoldGroup.position.set(loc.x, 0, loc.z);
-      this.worldGroup.add(scaffoldGroup);
+    const roadMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2a2a2a,
+      roughness: 0.85,
+      metalness: 0.05
     });
+    const barrierMaterial = new THREE.MeshStandardMaterial({
+      color: 0x808080,
+      roughness: 0.6,
+      metalness: 0.2
+    });
+    const pillarMaterial = new THREE.MeshStandardMaterial({
+      color: 0x606060,
+      roughness: 0.7,
+      metalness: 0.1
+    });
+    const lineMaterial = new THREE.MeshStandardMaterial({
+      color: 0xFFFFFF,
+      roughness: 0.5,
+      emissive: 0x222222,
+      emissiveIntensity: 0.1
+    });
+
+    // Calculate direction vectors based on highway side
+    let rampDirX = 0, rampDirZ = 0;
+    let perpX = 0, perpZ = 0;
+
+    switch (highwaySide) {
+      case 'west': // Highway runs N-S at x=-200, ramp goes east (toward city)
+        rampDirX = 1; rampDirZ = 0;
+        perpX = 0; perpZ = 1;
+        break;
+      case 'east': // Highway runs N-S at x=250, ramp goes west (toward city)
+        rampDirX = -1; rampDirZ = 0;
+        perpX = 0; perpZ = 1;
+        break;
+      case 'south': // Highway runs E-W at z=-250, ramp goes north (toward city)
+        rampDirX = 0; rampDirZ = 1;
+        perpX = 1; perpZ = 0;
+        break;
+      case 'north': // Highway runs E-W, ramp goes south
+        rampDirX = 0; rampDirZ = -1;
+        perpX = 1; perpZ = 0;
+        break;
+    }
+
+    // Starting point at highway level (offset from center to edge of highway)
+    const highwayOffset = 8; // Distance from highway center to ramp start
+    const startX = highwayX + rampDirX * highwayOffset;
+    const startZ = highwayZ + rampDirZ * highwayOffset;
+
+    // Ground entry point (end of ramp at street level)
+    const totalLength = groundEntryLength + slopeLength + mergeLength;
+    const groundX = startX + rampDirX * (slopeLength + groundEntryLength);
+    const groundZ = startZ + rampDirZ * (slopeLength + groundEntryLength);
+
+    // 1. Create merge section at highway level (flat)
+    const mergeGeom = new THREE.BoxGeometry(
+      highwaySide === 'west' || highwaySide === 'east' ? mergeLength : rampWidth,
+      0.4,
+      highwaySide === 'west' || highwaySide === 'east' ? rampWidth : mergeLength
+    );
+    const merge = new THREE.Mesh(mergeGeom, roadMaterial);
+    merge.position.set(
+      startX + rampDirX * (mergeLength / 2),
+      highwayHeight,
+      startZ + rampDirZ * (mergeLength / 2)
+    );
+    merge.receiveShadow = true;
+    this.worldGroup.add(merge);
+
+    // Merge section physics
+    const mergeShape = new CANNON.Box(new CANNON.Vec3(
+      (highwaySide === 'west' || highwaySide === 'east' ? mergeLength : rampWidth) / 2,
+      0.2,
+      (highwaySide === 'west' || highwaySide === 'east' ? rampWidth : mergeLength) / 2
+    ));
+    const mergeBody = new CANNON.Body({ mass: 0, shape: mergeShape });
+    mergeBody.position.set(
+      startX + rampDirX * (mergeLength / 2),
+      highwayHeight,
+      startZ + rampDirZ * (mergeLength / 2)
+    );
+    mergeBody.collisionFilterGroup = COLLISION_GROUPS.GROUND;
+    mergeBody.collisionFilterMask = COLLISION_GROUPS.PLAYER | COLLISION_GROUPS.VEHICLE | COLLISION_GROUPS.NPC;
+    this.game.physics.world.addBody(mergeBody);
+
+    // Add Rapier collider for vehicle physics (merge section)
+    this.game.vehiclePhysics.addStaticBox(
+      { x: startX + rampDirX * (mergeLength / 2), y: highwayHeight, z: startZ + rampDirZ * (mergeLength / 2) },
+      {
+        x: (highwaySide === 'west' || highwaySide === 'east' ? mergeLength : rampWidth) / 2,
+        y: 0.2,
+        z: (highwaySide === 'west' || highwaySide === 'east' ? rampWidth : mergeLength) / 2
+      }
+    );
+
+    // 2. Create sloped segments (multiple flat segments for smooth driving)
+    const segmentLength = slopeLength / numSlopeSegments;
+    const heightPerSegment = highwayHeight / numSlopeSegments;
+
+    for (let i = 0; i < numSlopeSegments; i++) {
+      const segmentStartDist = mergeLength + i * segmentLength;
+      const segmentMidDist = segmentStartDist + segmentLength / 2;
+      const segmentHeight = highwayHeight - (i + 0.5) * heightPerSegment;
+
+      // Segment mesh
+      const segGeom = new THREE.BoxGeometry(
+        highwaySide === 'west' || highwaySide === 'east' ? segmentLength + 0.5 : rampWidth,
+        0.4,
+        highwaySide === 'west' || highwaySide === 'east' ? rampWidth : segmentLength + 0.5
+      );
+      const seg = new THREE.Mesh(segGeom, roadMaterial);
+      seg.position.set(
+        startX + rampDirX * segmentMidDist,
+        segmentHeight,
+        startZ + rampDirZ * segmentMidDist
+      );
+
+      // Tilt the segment to match slope
+      const tiltAngle = Math.atan(heightPerSegment / segmentLength);
+      if (highwaySide === 'west') {
+        seg.rotation.z = -tiltAngle;
+      } else if (highwaySide === 'east') {
+        seg.rotation.z = tiltAngle;
+      } else if (highwaySide === 'south') {
+        seg.rotation.x = tiltAngle;
+      } else {
+        seg.rotation.x = -tiltAngle;
+      }
+
+      seg.receiveShadow = true;
+      seg.castShadow = true;
+      this.worldGroup.add(seg);
+
+      // Physics for each segment
+      const segShape = new CANNON.Box(new CANNON.Vec3(
+        (highwaySide === 'west' || highwaySide === 'east' ? segmentLength + 0.5 : rampWidth) / 2,
+        0.2,
+        (highwaySide === 'west' || highwaySide === 'east' ? rampWidth : segmentLength + 0.5) / 2
+      ));
+      const segBody = new CANNON.Body({ mass: 0, shape: segShape });
+      segBody.position.set(
+        startX + rampDirX * segmentMidDist,
+        segmentHeight,
+        startZ + rampDirZ * segmentMidDist
+      );
+      const segQuat = new CANNON.Quaternion();
+      segQuat.setFromEuler(seg.rotation.x, seg.rotation.y, seg.rotation.z);
+      segBody.quaternion.copy(segQuat);
+      segBody.collisionFilterGroup = COLLISION_GROUPS.GROUND;
+      segBody.collisionFilterMask = COLLISION_GROUPS.PLAYER | COLLISION_GROUPS.VEHICLE | COLLISION_GROUPS.NPC;
+      this.game.physics.world.addBody(segBody);
+
+      // Add Rapier collider for vehicle physics
+      this.game.vehiclePhysics.addRampCollider(
+        { x: startX + rampDirX * segmentMidDist, y: segmentHeight, z: startZ + rampDirZ * segmentMidDist },
+        {
+          x: (highwaySide === 'west' || highwaySide === 'east' ? segmentLength + 0.5 : rampWidth) / 2,
+          y: 0.2,
+          z: (highwaySide === 'west' || highwaySide === 'east' ? rampWidth : segmentLength + 0.5) / 2
+        },
+        { x: seg.rotation.x, y: seg.rotation.y, z: seg.rotation.z }
+      );
+
+      // Support pillars every 2 segments
+      if (i % 2 === 0 && segmentHeight > 1.5) {
+        const pillar = new THREE.Mesh(
+          new THREE.BoxGeometry(1, segmentHeight - 0.2, 1),
+          pillarMaterial
+        );
+        pillar.position.set(
+          startX + rampDirX * segmentMidDist,
+          (segmentHeight - 0.2) / 2,
+          startZ + rampDirZ * segmentMidDist
+        );
+        pillar.castShadow = true;
+        this.worldGroup.add(pillar);
+      }
+
+      // Side barriers on sloped sections
+      for (const side of [-1, 1]) {
+        const barrier = new THREE.Mesh(
+          new THREE.BoxGeometry(
+            highwaySide === 'west' || highwaySide === 'east' ? segmentLength : 0.4,
+            0.8,
+            highwaySide === 'west' || highwaySide === 'east' ? 0.4 : segmentLength
+          ),
+          barrierMaterial
+        );
+        barrier.position.set(
+          startX + rampDirX * segmentMidDist + perpX * (rampWidth / 2 - 0.2) * side,
+          segmentHeight + 0.4,
+          startZ + rampDirZ * segmentMidDist + perpZ * (rampWidth / 2 - 0.2) * side
+        );
+        barrier.castShadow = true;
+        this.worldGroup.add(barrier);
+      }
+    }
+
+    // 3. Create ground entry section (flat at ground level)
+    const entryStartDist = mergeLength + slopeLength;
+    const entryGeom = new THREE.BoxGeometry(
+      highwaySide === 'west' || highwaySide === 'east' ? groundEntryLength : rampWidth,
+      0.3,
+      highwaySide === 'west' || highwaySide === 'east' ? rampWidth : groundEntryLength
+    );
+    const entry = new THREE.Mesh(entryGeom, roadMaterial);
+    entry.position.set(
+      startX + rampDirX * (entryStartDist + groundEntryLength / 2),
+      0.15,
+      startZ + rampDirZ * (entryStartDist + groundEntryLength / 2)
+    );
+    entry.receiveShadow = true;
+    this.worldGroup.add(entry);
+
+    // Ground entry physics
+    const entryShape = new CANNON.Box(new CANNON.Vec3(
+      (highwaySide === 'west' || highwaySide === 'east' ? groundEntryLength : rampWidth) / 2,
+      0.15,
+      (highwaySide === 'west' || highwaySide === 'east' ? rampWidth : groundEntryLength) / 2
+    ));
+    const entryBody = new CANNON.Body({ mass: 0, shape: entryShape });
+    entryBody.position.set(
+      startX + rampDirX * (entryStartDist + groundEntryLength / 2),
+      0.15,
+      startZ + rampDirZ * (entryStartDist + groundEntryLength / 2)
+    );
+    entryBody.collisionFilterGroup = COLLISION_GROUPS.GROUND;
+    entryBody.collisionFilterMask = COLLISION_GROUPS.PLAYER | COLLISION_GROUPS.VEHICLE | COLLISION_GROUPS.NPC;
+    this.game.physics.world.addBody(entryBody);
+
+    // Add Rapier collider for vehicle physics (ground entry)
+    this.game.vehiclePhysics.addStaticBox(
+      { x: startX + rampDirX * (entryStartDist + groundEntryLength / 2), y: 0.15, z: startZ + rampDirZ * (entryStartDist + groundEntryLength / 2) },
+      {
+        x: (highwaySide === 'west' || highwaySide === 'east' ? groundEntryLength : rampWidth) / 2,
+        y: 0.15,
+        z: (highwaySide === 'west' || highwaySide === 'east' ? rampWidth : groundEntryLength) / 2
+      }
+    );
+
+    // Entry barriers (lower at ground level)
+    for (const side of [-1, 1]) {
+      const entryBarrier = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          highwaySide === 'west' || highwaySide === 'east' ? groundEntryLength : 0.3,
+          0.6,
+          highwaySide === 'west' || highwaySide === 'east' ? 0.3 : groundEntryLength
+        ),
+        barrierMaterial
+      );
+      entryBarrier.position.set(
+        startX + rampDirX * (entryStartDist + groundEntryLength / 2) + perpX * (rampWidth / 2 - 0.15) * side,
+        0.45,
+        startZ + rampDirZ * (entryStartDist + groundEntryLength / 2) + perpZ * (rampWidth / 2 - 0.15) * side
+      );
+      this.worldGroup.add(entryBarrier);
+    }
+
+    // 4. Add lane markings on ramp
+    const numDashes = 6;
+    for (let i = 0; i < numDashes; i++) {
+      const t = (i + 0.5) / numDashes;
+      const dashDist = mergeLength + t * slopeLength;
+      const dashHeight = highwayHeight * (1 - t);
+
+      const dash = new THREE.Mesh(
+        new THREE.PlaneGeometry(
+          highwaySide === 'west' || highwaySide === 'east' ? 3 : 0.15,
+          highwaySide === 'west' || highwaySide === 'east' ? 0.15 : 3
+        ),
+        lineMaterial
+      );
+      dash.rotation.x = -Math.PI / 2;
+      dash.position.set(
+        startX + rampDirX * dashDist,
+        dashHeight + 0.22,
+        startZ + rampDirZ * dashDist
+      );
+      this.worldGroup.add(dash);
+    }
+
+    // 5. Add highway entrance sign
+    this.createHighwaySign(
+      startX + rampDirX * (entryStartDist + groundEntryLength + 3),
+      startZ + rampDirZ * (entryStartDist + groundEntryLength + 3) + perpZ * 5,
+      highwaySide
+    );
+  }
+
+  private createHighwaySign(x: number, z: number, direction: string): void {
+    const postMaterial = new THREE.MeshStandardMaterial({ color: 0x404040, roughness: 0.6 });
+    const signMaterial = new THREE.MeshStandardMaterial({
+      color: 0x006B3C, // Highway green
+      roughness: 0.4,
+      emissive: 0x002211,
+      emissiveIntensity: 0.1
+    });
+
+    const signGroup = new THREE.Group();
+
+    // Sign posts
+    for (const offset of [-1.5, 1.5]) {
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.1, 4, 8),
+        postMaterial
+      );
+      post.position.set(offset, 2, 0);
+      signGroup.add(post);
+    }
+
+    // Sign board
+    const board = new THREE.Mesh(
+      new THREE.BoxGeometry(4, 1.5, 0.15),
+      signMaterial
+    );
+    board.position.set(0, 3.5, 0);
+    signGroup.add(board);
+
+    // White border
+    const borderMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+    const topBorder = new THREE.Mesh(new THREE.BoxGeometry(4.1, 0.08, 0.16), borderMat);
+    topBorder.position.set(0, 4.2, 0);
+    signGroup.add(topBorder);
+    const bottomBorder = new THREE.Mesh(new THREE.BoxGeometry(4.1, 0.08, 0.16), borderMat);
+    bottomBorder.position.set(0, 2.8, 0);
+    signGroup.add(bottomBorder);
+
+    // Arrow
+    const arrowGeom = new THREE.ConeGeometry(0.2, 0.5, 3);
+    const arrow = new THREE.Mesh(arrowGeom, borderMat);
+    arrow.rotation.z = Math.PI / 2;
+    arrow.position.set(1.2, 3.5, 0.1);
+    signGroup.add(arrow);
+
+    signGroup.position.set(x, 0, z);
+
+    // Rotate sign to face the road
+    if (direction === 'west' || direction === 'east') {
+      signGroup.rotation.y = Math.PI / 2;
+    }
+
+    this.worldGroup.add(signGroup);
+  }
+
+  // NYC street furniture - placed only on sidewalks, away from car lanes
+  private createStreetFurniture(): void {
+    // Street furniture removed for smooth driving experience
+    // Roads are kept clear for vehicles
+  }
+
+  // Construction scaffolding - disabled for clear roads
+  private createScaffolding(): void {
+    // Scaffolding removed for smooth driving experience
   }
 
   private createSidewalkTexture(): THREE.CanvasTexture {
@@ -1051,6 +1516,10 @@ export class World {
       new THREE.Vector3(position.x, height / 2, position.z),
       COLLISION_GROUPS.STATIC
     );
+
+    // NOTE: Rapier colliders for buildings removed for performance
+    // Buildings use CANNON physics for player/NPC collision
+    // Vehicle collision with buildings handled separately
 
     const building: Building = {
       mesh: group,
@@ -1966,6 +2435,12 @@ export class World {
       { type: 'health', position: new THREE.Vector3(100, 1, 50), value: 50 }
     );
 
+    // === SPIDERMAN SUIT - Special pickup ===
+    // Easy access near spawn for testing - look for the glowing red pickup!
+    pickupLocations.push(
+      { type: 'spiderman_suit', position: new THREE.Vector3(10, 1, 10), value: 0 }
+    );
+
     pickupLocations.forEach(pickup => {
       this.createPickup(pickup.type, pickup.position, pickup.value, pickup.weaponId);
     });
@@ -1978,7 +2453,8 @@ export class World {
       money: 0x00ff00,
       weapon: 0xffff00,
       ammo: 0xff8800,
-      special: 0xff00ff
+      special: 0xff00ff,
+      spiderman_suit: 0xff0044 // Red/blue Spiderman color
     };
 
     const group = new THREE.Group();
@@ -2220,6 +2696,13 @@ export class World {
         this.game.inventory.addAmmoByType('smg', pickup.value);
         this.game.inventory.addAmmoByType('rifle', pickup.value);
         break;
+      case 'spiderman_suit':
+        // Enable Spiderman web-swinging abilities!
+        this.game.player.state.hasSpidermanSuit = true;
+        this.game.ui.showNotification('SPIDERMAN SUIT ACQUIRED! Hold Right Mouse Button to web-swing!');
+        // Don't respawn the suit
+        pickup.respawnTime = 999999;
+        break;
     }
 
     this.game.audio.playSound('pickup');
@@ -2401,18 +2884,49 @@ export class World {
   optimizeStaticObjects(): void {
     const statics = this.getStaticObjects();
     let count = 0;
+    let cullingEnabled = 0;
 
     statics.forEach(obj => {
       obj.traverse(child => {
+        // Mark as static to disable matrix auto-update
         child.userData.isStatic = true;
         child.matrixAutoUpdate = false;
         child.updateMatrix();
         child.updateMatrixWorld(true);
         count++;
+
+        // Enable frustum culling on meshes
+        if (child instanceof THREE.Mesh || child instanceof THREE.InstancedMesh) {
+          child.frustumCulled = true;
+
+          // Compute bounding sphere for efficient culling
+          if (child.geometry && !child.geometry.boundingSphere) {
+            child.geometry.computeBoundingSphere();
+          }
+          cullingEnabled++;
+        }
+
+        // Enable frustum culling on groups (cull entire groups)
+        if (child instanceof THREE.Group) {
+          child.frustumCulled = true;
+        }
       });
     });
 
-    console.log(`✅ Marked ${count} world objects as static`);
+    // Also optimize worldGroup children
+    this.worldGroup.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        child.frustumCulled = true;
+        child.matrixAutoUpdate = false;
+        child.updateMatrix();
+        if (child.geometry && !child.geometry.boundingSphere) {
+          child.geometry.computeBoundingSphere();
+        }
+        cullingEnabled++;
+      }
+    });
+
+    console.log(`✅ Marked ${count} world objects as static, enabled culling on ${cullingEnabled} meshes`);
   }
 
   dispose(): void {

@@ -7,6 +7,7 @@ import { globalEvents } from '@/core/EventEmitter';
 import { COLLISION_GROUPS } from '@/physics/PhysicsWorld';
 import { ProceduralCharacterAnimator } from '@/animation/CharacterAnimator';
 import { ClimbingSystem } from './ClimbingSystem';
+import { WebSwingingSystem } from './WebSwingingSystem';
 
 export class Player {
   private game: Game;
@@ -60,6 +61,9 @@ export class Player {
   // Climbing system
   private climbingSystem: ClimbingSystem;
 
+  // Web swinging system (Spiderman suit)
+  private webSwingingSystem: WebSwingingSystem;
+
   constructor(game: Game) {
     this.game = game;
 
@@ -89,7 +93,10 @@ export class Player {
       isInBuilding: false,
       currentBuildingId: null,
       isClimbing: false,
-      climbingType: 'none'
+      climbingType: 'none',
+      // Spiderman web-swinging states
+      hasSpidermanSuit: false,
+      isSwinging: false
     };
 
     this.mesh = new THREE.Group();
@@ -97,6 +104,7 @@ export class Player {
     this.cameraTarget = new THREE.Object3D();
     this.animator = new ProceduralCharacterAnimator();
     this.climbingSystem = new ClimbingSystem(game);
+    this.webSwingingSystem = new WebSwingingSystem(game);
   }
 
   get position(): THREE.Vector3 {
@@ -415,11 +423,46 @@ export class Player {
     } else if (this.state.isInBuilding) {
       this.updateInBuilding(deltaTime);
     } else {
-      this.updateOnFoot(deltaTime);
+      // Handle web swinging if player has Spiderman suit
+      if (this.state.hasSpidermanSuit) {
+        this.updateWebSwinging(deltaTime);
+      }
+
+      // Only do normal on-foot movement if NOT currently swinging
+      if (!this.state.isSwinging && !this.webSwingingSystem.isCurrentlyAirborne()) {
+        this.updateOnFoot(deltaTime);
+      } else {
+        // Still update rotation while swinging for camera control
+        const input = this.game.input.getState();
+        this.updateRotation(input, deltaTime);
+      }
     }
 
     this.updateCamera(deltaTime);
     this.updateStats(deltaTime);
+  }
+
+  /**
+   * Update web swinging mechanics
+   */
+  private updateWebSwinging(deltaTime: number): void {
+    const input = this.game.input.getState();
+
+    // RMB (aim) to shoot/maintain web
+    if (input.aim) {
+      if (!this.webSwingingSystem.isCurrentlySwinging()) {
+        this.webSwingingSystem.tryShootWeb();
+      }
+    } else {
+      // Released RMB - let go of web
+      if (this.webSwingingSystem.isCurrentlySwinging()) {
+        // Boost if jump is pressed while releasing
+        this.webSwingingSystem.releaseWeb(input.jump);
+      }
+    }
+
+    // Update the swinging system
+    this.webSwingingSystem.update(deltaTime);
   }
 
   private updateInBuilding(deltaTime: number): void {
@@ -512,7 +555,8 @@ export class Player {
 
   // Called after physics step to sync mesh position with physics body
   syncWithPhysics(): void {
-    if (!this.state.isInVehicle) {
+    // Skip sync when in vehicle or swinging (swinging controls position directly)
+    if (!this.state.isInVehicle && !this.state.isSwinging) {
       this.mesh.position.set(
         this.body.position.x,
         this.body.position.y,
@@ -1109,6 +1153,10 @@ export class Player {
 
   setRotation(y: number): void {
     this.mesh.rotation.y = y;
+  }
+
+  getPhysicsBody(): CANNON.Body {
+    return this.body;
   }
 
   equipWeapon(weapon: Weapon): void {

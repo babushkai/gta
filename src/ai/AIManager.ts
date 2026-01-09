@@ -100,11 +100,11 @@ export class AIManager {
                     ('ontouchstart' in window) ||
                     window.innerWidth < 768;
 
-    // Reduce NPC count on mobile
-    this.maxNPCs = this.isMobile ? 10 : 30;
-    this.updateRadius = this.isMobile ? 50 : 100;
-    this.despawnRadius = this.isMobile ? 80 : 150;
-    this.targetNPCCount = this.isMobile ? 5 : 15;
+    // Reduce NPC count for performance
+    this.maxNPCs = this.isMobile ? 5 : 15;
+    this.updateRadius = this.isMobile ? 40 : 80;
+    this.despawnRadius = this.isMobile ? 60 : 120;
+    this.targetNPCCount = this.isMobile ? 3 : 8;
   }
 
   async initialize(): Promise<void> {
@@ -610,9 +610,15 @@ export class AIManager {
     return points;
   }
 
+  // Performance: frame counter for staggered updates
+  private frameCounter: number = 0;
+
   update(deltaTime: number): void {
+    this.frameCounter++;
     const playerPosition = this.game.player.position;
 
+    // Stagger NPC updates across frames for better performance
+    let updateIndex = 0;
     this.npcs.forEach((npc, id) => {
       const distance = npc.mesh.position.distanceTo(playerPosition);
 
@@ -621,18 +627,31 @@ export class AIManager {
         return;
       }
 
-      if (distance < this.updateRadius) {
+      // Distance-based update frequency:
+      // - Close NPCs (< 30): every frame
+      // - Medium NPCs (30-60): every 2nd frame
+      // - Far NPCs (60+): every 4th frame
+      const shouldUpdate = distance < 30 ||
+        (distance < 60 && this.frameCounter % 2 === updateIndex % 2) ||
+        (this.frameCounter % 4 === updateIndex % 4);
+
+      if (distance < this.updateRadius && shouldUpdate) {
         this.updateNPC(npc, deltaTime);
       }
+      updateIndex++;
     });
 
+    // Throttle behavior updates more aggressively
     this.lastBehaviorUpdate += deltaTime;
     if (this.lastBehaviorUpdate >= this.behaviorUpdateInterval) {
       this.updateBehaviors();
       this.lastBehaviorUpdate = 0;
     }
 
-    this.maintainNPCPopulation();
+    // Only check population every 60 frames
+    if (this.frameCounter % 60 === 0) {
+      this.maintainNPCPopulation();
+    }
   }
 
   private updateNPC(npc: NPC, deltaTime: number): void {

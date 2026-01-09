@@ -2,6 +2,35 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
+ * Detect Apple Silicon for ultra quality settings
+ * Works with Chrome (ANGLE), Safari, and Firefox
+ */
+function detectAppleSiliconPerf(): boolean {
+  const ua = navigator.userAgent;
+  const isMac = /Macintosh/.test(ua);
+  if (!isMac) return false;
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        const isAppleGPU = /Apple M\d|Apple GPU/i.test(renderer) ||
+                          (/Apple/.test(renderer) && !/Intel/.test(renderer)) ||
+                          (/ANGLE.*Apple.*M\d/i.test(renderer));
+        if (isAppleGPU) return true;
+        if (/Intel/.test(renderer)) return false;
+      }
+    }
+  } catch (e) { /* ignore */ }
+  // Fallback: Assume Apple Silicon for Macs
+  return true;
+}
+
+const isAppleSilicon = detectAppleSiliconPerf();
+
+/**
  * PerformanceManager - Advanced rendering optimizations for smooth gameplay
  *
  * Implements 2025 best practices:
@@ -10,6 +39,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  * 3. Distance culling - Hide objects beyond view distance
  * 4. Material batching - Share materials between similar objects
  * 5. Adaptive quality - Automatically adjust quality based on FPS
+ * 6. Ultra quality tier for Apple Silicon M-series
  */
 export class PerformanceManager {
   private scene: THREE.Scene;
@@ -19,12 +49,12 @@ export class PerformanceManager {
   private frameTimeHistory: number[] = [];
   private lastFrameTime: number = 0;
   private targetFPS: number = 60;
-  private currentQuality: 'high' | 'medium' | 'low' = 'high';
+  private currentQuality: 'ultra' | 'high' | 'medium' | 'low' = isAppleSilicon ? 'ultra' : 'high';
 
-  // Distance culling
-  private cullDistance: number = 400;
-  private nearDistance: number = 100;
-  private mediumDistance: number = 200;
+  // Distance culling - higher for Apple Silicon
+  private cullDistance: number = isAppleSilicon ? 800 : 400;
+  private nearDistance: number = isAppleSilicon ? 250 : 100;
+  private mediumDistance: number = isAppleSilicon ? 500 : 200;
 
   // Merged geometry groups
   private mergedMeshes: Map<string, THREE.Mesh> = new Map();
@@ -218,8 +248,14 @@ export class PerformanceManager {
     this.stats.objectsCulled = culled;
   }
 
+  // Warmup period to prevent quality drops during initial loading
+  private warmupFrames: number = 0;
+  private readonly WARMUP_THRESHOLD = 120; // ~2 seconds at 60fps
+
   /**
    * Adaptive quality based on FPS
+   * Apple Silicon starts at ultra and can drop to high if needed
+   * Includes warmup period to prevent quality drops during initial loading
    */
   updateAdaptiveQuality(deltaTime: number): void {
     const frameTime = deltaTime * 1000; // Convert to ms
@@ -230,26 +266,37 @@ export class PerformanceManager {
       this.frameTimeHistory.shift();
     }
 
+    // Warmup period - don't drop quality during initial frames
+    this.warmupFrames++;
+    if (this.warmupFrames < this.WARMUP_THRESHOLD) {
+      return; // Skip quality adjustments during warmup
+    }
+
     // Calculate average FPS
     const avgFrameTime = this.frameTimeHistory.reduce((a, b) => a + b, 0) / this.frameTimeHistory.length;
     const currentFPS = 1000 / avgFrameTime;
 
-    // Adjust quality based on FPS
-    if (currentFPS < 30 && this.currentQuality !== 'low') {
+    // Adjust quality based on FPS (only downgrade after warmup)
+    if (currentFPS < 25 && this.currentQuality !== 'low') {
+      // More lenient - only drop to low if FPS is very bad
       this.setQuality('low');
-    } else if (currentFPS < 45 && this.currentQuality === 'high') {
+    } else if (currentFPS < 40 && (this.currentQuality === 'high' || this.currentQuality === 'ultra')) {
       this.setQuality('medium');
-    } else if (currentFPS > 55 && this.currentQuality === 'low') {
+    } else if (currentFPS > 50 && this.currentQuality === 'low') {
       this.setQuality('medium');
-    } else if (currentFPS > 58 && this.currentQuality === 'medium') {
-      this.setQuality('high');
+    } else if (currentFPS > 55 && this.currentQuality === 'medium') {
+      // Recover to high (or ultra on Apple Silicon)
+      this.setQuality(isAppleSilicon ? 'ultra' : 'high');
+    } else if (currentFPS > 58 && this.currentQuality === 'high' && isAppleSilicon) {
+      // Apple Silicon can upgrade to ultra when FPS is stable
+      this.setQuality('ultra');
     }
   }
 
   /**
    * Set quality level
    */
-  setQuality(quality: 'high' | 'medium' | 'low'): void {
+  setQuality(quality: 'ultra' | 'high' | 'medium' | 'low'): void {
     if (quality === this.currentQuality) return;
 
     console.log(`🎮 Quality changed: ${this.currentQuality} -> ${quality}`);
@@ -257,6 +304,12 @@ export class PerformanceManager {
 
     // Adjust culling distances
     switch (quality) {
+      case 'ultra':
+        // Apple Silicon M4 ultra quality
+        this.cullDistance = 800;
+        this.nearDistance = 250;
+        this.mediumDistance = 500;
+        break;
       case 'high':
         this.cullDistance = 500;
         this.nearDistance = 150;

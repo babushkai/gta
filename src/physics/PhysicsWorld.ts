@@ -506,6 +506,77 @@ export class PhysicsWorld {
     }
   }
 
+  /**
+   * Create multiple box bodies at once (for chunk loading)
+   * More efficient than individual createBoxBody calls
+   */
+  createBodiesForChunk(definitions: Array<{
+    id: string;
+    width: number;
+    height: number;
+    depth: number;
+    mass: number;
+    position: THREE.Vector3;
+    collisionGroup?: number;
+  }>): string[] {
+    const ids: string[] = [];
+
+    for (const def of definitions) {
+      const shape = new CANNON.Box(new CANNON.Vec3(def.width / 2, def.height / 2, def.depth / 2));
+      const body = new CANNON.Body({
+        mass: def.mass,
+        shape,
+        position: new CANNON.Vec3(def.position.x, def.position.y, def.position.z),
+        collisionFilterGroup: def.collisionGroup ?? COLLISION_GROUPS.STATIC,
+        collisionFilterMask: -1
+      });
+
+      // Static bodies should sleep immediately
+      if (def.mass === 0) {
+        body.sleepState = CANNON.Body.SLEEPING;
+      }
+
+      this.world.addBody(body);
+      this.bodies.set(def.id, body);
+      ids.push(def.id);
+    }
+
+    return ids;
+  }
+
+  /**
+   * Remove multiple bodies at once (for chunk unloading)
+   * More efficient than individual removeBody calls
+   */
+  removeBodiesForChunk(ids: string[]): void {
+    for (const id of ids) {
+      const body = this.bodies.get(id);
+      if (body) {
+        const mesh = this.bodyMeshMap.get(body);
+        if (mesh) {
+          this.meshBodyMap.delete(mesh);
+        }
+        this.bodyMeshMap.delete(body);
+        this.world.removeBody(body);
+        this.bodies.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Check if a body exists
+   */
+  hasBody(id: string): boolean {
+    return this.bodies.has(id);
+  }
+
+  /**
+   * Get count of active bodies
+   */
+  getBodyCount(): number {
+    return this.bodies.size;
+  }
+
   dispose(): void {
     this.bodies.forEach((_, id) => this.removeBody(id));
     this.bodies.clear();

@@ -14,12 +14,45 @@ import {
 } from 'postprocessing';
 import { GraphicsConfig } from '@/types';
 
+/**
+ * Detect Apple Silicon for renderer optimizations
+ * Works with Chrome (ANGLE), Safari, and Firefox
+ */
+function detectAppleSiliconRenderer(): boolean {
+  const ua = navigator.userAgent;
+  const isMac = /Macintosh/.test(ua);
+  if (!isMac) return false;
+
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        // Check for Apple Silicon patterns (Safari, Chrome ANGLE, Firefox)
+        const isAppleGPU = /Apple M\d|Apple GPU/i.test(renderer) ||
+                          (/Apple/.test(renderer) && !/Intel/.test(renderer)) ||
+                          (/ANGLE.*Apple.*M\d/i.test(renderer));
+        if (isAppleGPU) return true;
+        if (/Intel/.test(renderer)) return false;
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  // Fallback: Assume Apple Silicon for Macs
+  return true;
+}
+
+const isAppleSilicon = detectAppleSiliconRenderer();
+
 export class Renderer {
   private renderer: THREE.WebGLRenderer;
   private composer: EffectComposer | null = null;
   private config: GraphicsConfig;
   private canvas: HTMLCanvasElement;
   private usePostProcessing: boolean;
+  private isAppleSilicon: boolean;
 
   private bloomEffect: BloomEffect | null = null;
   private ssaoEffect: SSAOEffect | null = null;
@@ -34,6 +67,7 @@ export class Renderer {
   constructor(config: GraphicsConfig) {
     this.config = config;
     this.usePostProcessing = config.postProcessing;
+    this.isAppleSilicon = isAppleSilicon;
 
     this.canvas = document.createElement('canvas');
     this.canvas.id = 'game-canvas';
@@ -48,9 +82,18 @@ export class Renderer {
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
 
-    // Lower pixel ratio on mobile for performance
+    // Pixel ratio optimization based on platform
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || ('ontouchstart' in window);
-    this.renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio, 2));
+    if (isMobile) {
+      this.renderer.setPixelRatio(1);
+    } else if (this.isAppleSilicon) {
+      // Apple Silicon: Use native Retina resolution (up to 3.0)
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+      console.log('🍎 Renderer: Using native Retina pixel ratio:', Math.min(window.devicePixelRatio, 3));
+    } else {
+      // Standard desktop: Cap at 2.0
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    }
 
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -59,7 +102,22 @@ export class Renderer {
     if (config.shadows) {
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      this.renderer.shadowMap.autoUpdate = true;
+      // Apple Silicon: Enable shadow auto-update for smoother shadows
+      if (this.isAppleSilicon) {
+        this.renderer.shadowMap.autoUpdate = true;
+      } else {
+        this.renderer.shadowMap.autoUpdate = false;
+        this.renderer.shadowMap.needsUpdate = true;
+      }
+    }
+  }
+
+  /**
+   * Force shadow map update (call when light positions change)
+   */
+  updateShadows(): void {
+    if (this.config.shadows) {
+      this.renderer.shadowMap.needsUpdate = true;
     }
   }
 
@@ -91,7 +149,17 @@ export class Renderer {
 
     // First effect pass: SSAO (needs to be separate for performance)
     if (this.config.ssao) {
-      this.ssaoEffect = new SSAOEffect(camera, normalPass.texture, {
+      // Apple Silicon: Full resolution SSAO with more samples
+      const ssaoConfig = this.isAppleSilicon ? {
+        intensity: 2.5,
+        samples: 32,              // More samples for quality
+        rings: 5,
+        luminanceInfluence: 0.6,
+        radius: 0.06,
+        bias: 0.02,
+        fade: 0.01,
+        resolutionScale: 1.0      // Full resolution for M4
+      } : {
         intensity: 2.0,
         samples: 16,
         rings: 4,
@@ -99,10 +167,16 @@ export class Renderer {
         radius: 0.05,
         bias: 0.025,
         fade: 0.01,
-        resolutionScale: 0.5 // Half resolution for performance
-      });
+        resolutionScale: 0.5      // Half resolution for other platforms
+      };
+
+      this.ssaoEffect = new SSAOEffect(camera, normalPass.texture, ssaoConfig);
       const ssaoPass = new EffectPass(camera, this.ssaoEffect);
       this.composer.addPass(ssaoPass);
+
+      if (this.isAppleSilicon) {
+        console.log('🍎 SSAO: Full resolution with 32 samples enabled');
+      }
     }
 
     // Second effect pass: Visual effects

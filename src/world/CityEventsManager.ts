@@ -91,7 +91,7 @@ export class CityEventsManager {
     this.game = game;
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
       ('ontouchstart' in window) || window.innerWidth < 768;
-    this.maxEvents = this.isMobile ? 8 : 20;
+    this.maxEvents = this.isMobile ? 5 : 10; // Reduced for performance
   }
 
   async initialize(): Promise<void> {

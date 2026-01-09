@@ -181,7 +181,7 @@ export class AudioManager {
   private config: AudioConfig;
   private audioContext: AudioContext | null = null;
   private radioStations: RadioStation[] = RADIO_STATIONS;
-  private currentStationIndex: number = 0;
+  private currentStationIndex: number = 1; // Start on first real station (not Radio Off)
   private currentRadioHowl: Howl | null = null;
   private currentStreamAudio: HTMLAudioElement | null = null; // Native audio for live streams
   private isRadioPlaying: boolean = false;
@@ -646,6 +646,55 @@ export class AudioManager {
           oscillator.start();
           oscillator.stop(this.audioContext.currentTime + 0.2);
           break;
+
+        // ==================== SPIDERMAN WEB-SWINGING SOUNDS ====================
+
+        case 'web_shoot':
+          // "Thwip!" sound - quick high-pitched ascending tone
+          oscillator.type = 'sine';
+          const thwipTime = this.audioContext.currentTime;
+          oscillator.frequency.setValueAtTime(400, thwipTime);
+          oscillator.frequency.exponentialRampToValueAtTime(2000, thwipTime + 0.05);
+          oscillator.frequency.exponentialRampToValueAtTime(800, thwipTime + 0.12);
+          gainNode.gain.setValueAtTime(volume * 0.5, thwipTime);
+          gainNode.gain.setValueAtTime(volume * 0.6, thwipTime + 0.03);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, thwipTime + 0.15);
+          oscillator.start();
+          oscillator.stop(thwipTime + 0.15);
+          break;
+
+        case 'web_release':
+          // Web detach sound - quick descending whoosh
+          oscillator.type = 'triangle';
+          const releaseTime = this.audioContext.currentTime;
+          oscillator.frequency.setValueAtTime(600, releaseTime);
+          oscillator.frequency.exponentialRampToValueAtTime(200, releaseTime + 0.1);
+          gainNode.gain.setValueAtTime(volume * 0.35, releaseTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, releaseTime + 0.12);
+          oscillator.start();
+          oscillator.stop(releaseTime + 0.12);
+          break;
+
+        case 'wind_loop':
+          // Wind rushing sound for swinging - creates noise burst
+          const windSwingBuffer = this.audioContext.createBuffer(1, this.audioContext.sampleRate * 0.8, this.audioContext.sampleRate);
+          const windData = windSwingBuffer.getChannelData(0);
+          for (let i = 0; i < windData.length; i++) {
+            windData[i] = (Math.random() * 2 - 1) * 0.4;
+          }
+          const windSwingSource = this.audioContext.createBufferSource();
+          windSwingSource.buffer = windSwingBuffer;
+          const windSwingFilter = this.audioContext.createBiquadFilter();
+          windSwingFilter.type = 'bandpass';
+          windSwingFilter.frequency.value = 300;
+          windSwingFilter.Q.value = 0.5;
+          windSwingSource.connect(windSwingFilter);
+          windSwingFilter.connect(gainNode);
+          gainNode.gain.setValueAtTime(volume * 0.3, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.8);
+          windSwingSource.start();
+          windSwingSource.stop(this.audioContext.currentTime + 0.8);
+          return; // Don't start oscillator
 
         default:
           // Generic click/beep sound

@@ -44,15 +44,15 @@ export class TrafficManager {
                     ('ontouchstart' in window) ||
                     window.innerWidth < 768;
 
-    // Reduce traffic on mobile
-    this.maxTrafficVehicles = this.isMobile ? 8 : 15;
+    // Reduce traffic for performance
+    this.maxTrafficVehicles = this.isMobile ? 5 : 10;
 
     this.config = {
       maxVehicles: this.maxTrafficVehicles,
-      maxPedestrians: this.isMobile ? 10 : 30,
-      spawnRadius: this.isMobile ? 60 : 80,
-      despawnRadius: this.isMobile ? 80 : 120,
-      density: this.isMobile ? 0.3 : 0.5
+      maxPedestrians: this.isMobile ? 5 : 15,
+      spawnRadius: this.isMobile ? 50 : 70,
+      despawnRadius: this.isMobile ? 70 : 100,
+      density: this.isMobile ? 0.2 : 0.4
     };
   }
 
@@ -237,8 +237,17 @@ export class TrafficManager {
     return nearest;
   }
 
+  // Performance: frame counter for staggered updates
+  private frameCounter: number = 0;
+  private despawnCheckAccumulator: number = 0;
+
   update(deltaTime: number): void {
-    this.updateTrafficLights(deltaTime);
+    this.frameCounter++;
+
+    // Update traffic lights every 3rd frame (they don't change fast)
+    if (this.frameCounter % 3 === 0) {
+      this.updateTrafficLights(deltaTime * 3);
+    }
 
     // Throttle expensive obstacle checks
     this.obstacleCheckAccumulator += deltaTime;
@@ -255,7 +264,12 @@ export class TrafficManager {
       this.spawnTrafficVehicle();
     }
 
-    this.despawnDistantVehicles();
+    // Check despawn less frequently (every 30 frames)
+    this.despawnCheckAccumulator += deltaTime;
+    if (this.despawnCheckAccumulator >= 0.5) {
+      this.despawnCheckAccumulator = 0;
+      this.despawnDistantVehicles();
+    }
   }
 
   private updateTrafficLights(deltaTime: number): void {
